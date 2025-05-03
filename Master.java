@@ -68,7 +68,7 @@ public class Master {
         System.out.println("Peer rimosso: " + peer.getIP() + ":" + peer.getPort());
     }
 
-    // (Opzionale) debug methods
+
     public void printAllPeers() {
         System.out.println("Peers registrati:");
         for (Tuple peer : hashPeer.keySet()) {
@@ -107,5 +107,22 @@ public class Master {
             }
         }
     }
+
+    public void inspectNodes() {
+        if (hashPeer.isEmpty()) {
+            System.out.println("Nessun peer registrato.");
+            return;
+        }
+
+        System.out.println("Peers e relative risorse:");
+        for (Tuple peer : hashPeer.keySet()) {
+            System.out.println("Peer " + peer.getIP() + ":" + peer.getPort());
+            List<String> risorse = hashPeer.get(peer);
+            for (String r : risorse) {
+                System.out.println("  - " + r);
+            }
+        }
+    }
+
 
 }

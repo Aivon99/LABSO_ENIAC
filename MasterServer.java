@@ -39,8 +39,13 @@ public class MasterServer {
                     case "quit":
                         System.out.println("Chiusura del server...");
                         System.exit(0);
+                    case "inspectnodes":
+                        synchronized (master) {
+                            master.inspectNodes();
+                        }
+                        break;
                     default:
-                        System.out.println("Comandi disponibili: listdata, listpeers, log, quit");
+                        System.out.println("Comandi disponibili: listdata, listpeers, log, inspectnodes, quit");
                         break;
                 }
 
