@@ -70,6 +70,36 @@ public class MasterHandler implements Runnable {
                         socket.close();
                         return;
                     }
+                    case "DOWNLOAD": {
+                        // es: DOWNLOAD R1 127.0.0.1 5001
+                        if (parts.length != 4) {
+                            out.write("Formato comando non valido. Uso: DOWNLOAD <risorsa> <IP_DEST> <PORTA_DEST>\n");
+                            out.flush();
+                            break;
+                        }
+
+                        String risorsa = parts[1];
+                        String ipDest = parts[2];
+                        int portDest = Integer.parseInt(parts[3]);
+
+                        Tuple sorgente;
+                        synchronized (master) {
+                            sorgente = master.getPeerRisorsa(risorsa);
+                        }
+
+                        if (sorgente != null) {
+                            Tuple destinatario = new Tuple(ipDest, portDest);
+                            synchronized (master) {
+                                master.registraDownload(risorsa, sorgente, destinatario);
+                            }
+                            out.write("Download registrato.\n");
+                        } else {
+                            out.write("Download fallito: risorsa non trovata.\n");
+                        }
+
+                        out.flush();
+                        break;
+                    }
                     default:
                         out.write("Comando non riconosciuto\n");
                         out.flush();

@@ -2,74 +2,110 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.List;
 import java.util.ArrayList;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 
 public class Master {
 
-    private HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorsa 
-    private HashMap<String, List<Tuple> > hashRisorse; // risorsa --> lista di peer
-
+    private HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorse
+    private HashMap<String, List<Tuple>> hashRisorse; // risorsa --> lista di peer
 
     public Master() {
         this.hashRisorse = new HashMap<>();
         this.hashPeer = new HashMap<>();
-    }    
+    }
 
     public void addPeer(String IP, int Port, List<String> risorse) {
         Tuple peer = new Tuple(IP, Port);
-        
         hashPeer.put(peer, risorse);
 
-        for(int i = 0; i < risorse.size(); i++){
-        
-            String risorsa = risorse.get(i);
-            
-            if(hashRisorse.containsKey(risorsa)) { //se sono già stati aggiunti nodi con la stessa risorsa, aggiungiamo il peer alla lista
-                List<Tuple> peerList = this.hashRisorse.get(risorsa); 
-                
-                peerList.add(peer); //aggiungiamo il peer alla lista di peer associati alla risorsa
-                hashRisorse.put(risorsa, peerList); //aggiorniamo la hasmap con la lista di peer aggiornati
-            
-            }
-
-            else{ //altrimenti
+        for (String risorsa : risorse) {
+            if (hashRisorse.containsKey(risorsa)) {
+                List<Tuple> peerList = hashRisorse.get(risorsa);
+                peerList.add(peer);
+                hashRisorse.put(risorsa, peerList);
+            } else {
                 List<Tuple> peerList = new ArrayList<>();
-                peerList.add(peer); //creiamo una nuova lista di peer e aggiungiamo il peer 
-                this.hashRisorse.put(risorsa, peerList); //aggiorniamo la hasmap con la lista di peer aggiornati
+                peerList.add(peer);
+                hashRisorse.put(risorsa, peerList);
             }
-            
-        
-            }
-        
         }
-    public Tuple getPeerRisorsa(String risorsa){
-        if(hashRisorse.containsKey(risorsa)) { //se la risorsa è presente nella hasmap
+    }
+
+    public Tuple getPeerRisorsa(String risorsa) {
+        if (hashRisorse.containsKey(risorsa)) {
             List<Tuple> peerList = hashRisorse.get(risorsa);
-            return peerList.get(0); //restituisci il primo peer della lista (o a caso in caso cambia)
-        }
-        else{ //se la risorsa non è presente nella hasmap (altrimenti si fa gestione errore ma non saprei se ha senso)
-            System.out.println(risorsa + " non è presente nella hasmap"); 
-            return null; //restituisci null 
-        }
-    }
-    
-    public void rimuoviPeer(Tuple peer){ 
-        
-        List<String> risorse = hashPeer.get(peer); 
-        
-        for (String  risorsa : risorse){ //rimuovi ogni istanza di peer dalla lista di peer associati alla risorsa
-            if(hashRisorse.containsKey(risorsa)) { //se la risorsa è presente nella hasmap
-                List<Tuple> peerList = hashRisorse.get(risorsa); 
-                peerList.remove(peer); //rimuovi il peer dalla lista
-                hashRisorse.put(risorsa, peerList); //aggiorna la hasmap con la lista di peer aggiornata
+            if (!peerList.isEmpty()) {
+                return peerList.get(0); // puoi fare anche random, se vuoi bilanciare il carico
             }
+        }
+        System.out.println("La risorsa " + risorsa + " non è disponibile.");
+        return null;
+    }
 
+    public void rimuoviPeer(Tuple peer) {
+        List<String> risorse = hashPeer.get(peer);
+
+        if (risorse == null) {
+            System.out.println("Il peer " + peer.getIP() + ":" + peer.getPort() + " non è registrato.");
+            return;
+        }
+
+        for (String risorsa : risorse) {
+            if (hashRisorse.containsKey(risorsa)) {
+                List<Tuple> peerList = hashRisorse.get(risorsa);
+                peerList.remove(peer);
+                if (peerList.isEmpty()) {
+                    hashRisorse.remove(risorsa); // rimuove risorsa se nessuno la possiede più
+                } else {
+                    hashRisorse.put(risorsa, peerList);
+                }
+            }
+        }
+
+        hashPeer.remove(peer); // pulizia finale
+        System.out.println("Peer rimosso: " + peer.getIP() + ":" + peer.getPort());
+    }
+
+    // (Opzionale) debug methods
+    public void printAllPeers() {
+        System.out.println("Peers registrati:");
+        for (Tuple peer : hashPeer.keySet()) {
+            System.out.println(peer.getIP() + ":" + peer.getPort());
         }
     }
 
+    public void printAllResources() {
+        System.out.println("Risorse disponibili:");
+        for (String risorsa : hashRisorse.keySet()) {
+            System.out.print(risorsa + " -> ");
+            for (Tuple t : hashRisorse.get(risorsa)) {
+                System.out.print(t.getIP() + ":" + t.getPort() + " ");
+            }
+            System.out.println();
+        }
+    }
 
+    private List<String> downloadLog = new ArrayList<>();
 
+    public void registraDownload(String risorsa, Tuple da, Tuple a) {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String record = timestamp + " - " + risorsa + " da: " + da.getIP() + ":" + da.getPort() +
+                " a: " + a.getIP() + ":" + a.getPort();
+        downloadLog.add(record);
+        System.out.println("LOG: " + record); // stampa anche live, utile per debug
+    }
 
+    public void stampaLog() {
+        System.out.println("Log dei download:");
+        if (downloadLog.isEmpty()) {
+            System.out.println("Nessun download registrato.");
+        } else {
+            for (String entry : downloadLog) {
+                System.out.println(entry);
+            }
+        }
+    }
 
-    
-    
 }
