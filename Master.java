@@ -1,22 +1,35 @@
 import java.util.HashMap;
-import java.util.Set;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
 import java.util.ArrayList;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
+import java.net.Socket;
 
 public class Master {
 
-    private HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorse
-    private HashMap<String, List<Tuple>> hashRisorse; // risorsa --> lista di peer
+    private HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorsa 
+    private HashMap<String, List<Tuple> > hashRisorse; // risorsa --> lista di peer
+    private ServerSocket serverSocket; // socket del master per ricevere le richieste dai peer
 
-    public Master() {
+    public Master(int Port) { // costruttore del master
         this.hashRisorse = new HashMap<>();
         this.hashPeer = new HashMap<>();
-    }
+        try {
+            this.serverSocket = new ServerSocket(Port); // server socket del master
+        } catch (Exception e) {
+            this.serverSocket = null; // se non riesce a creare il server socket, lo setta a null
+            System.out.println("Errore nella creazione del server socket: " + e.getMessage());
+        }
 
-    public void addPeer(String IP, int Port, List<String> risorse) {
+        
+    }    
+
+       public void addPeer(String IP, int Port, List<String> risorse) {
         Tuple peer = new Tuple(IP, Port);
         hashPeer.put(peer, risorse);
 
@@ -27,23 +40,27 @@ public class Master {
                 hashRisorse.put(risorsa, peerList);
             } else {
                 List<Tuple> peerList = new ArrayList<>();
+
                 peerList.add(peer);
                 hashRisorse.put(risorsa, peerList);
             }
         }
-    }
+      }
 
     public Tuple getPeerRisorsa(String risorsa) {
         if (hashRisorse.containsKey(risorsa)) {
             List<Tuple> peerList = hashRisorse.get(risorsa);
-            if (!peerList.isEmpty()) {
-                return peerList.get(0); // puoi fare anche random, se vuoi bilanciare il carico
-            }
-        }
-        System.out.println("La risorsa " + risorsa + " non è disponibile.");
-        return null;
-    }
 
+            return peerList.get(0); //restituisci il primo peer della lista (o a caso in caso cambia)
+        }
+        else{ //se la risorsa non è presente nella hasmap (altrimenti si fa gestione errore ma non saprei se ha senso)
+            System.out.println(risorsa + " non è presente nella hasmap"); 
+            return null; //restituisci null 
+        }
+    }  
+    
+  
+    
     public void rimuoviPeer(Tuple peer) {
         List<String> risorse = hashPeer.get(peer);
 
@@ -68,8 +85,13 @@ public class Master {
         System.out.println("Peer rimosso: " + peer.getIP() + ":" + peer.getPort());
     }
 
+    
+    public void modificaPeer(Tuple peer, List<String> nuoveRisorse){ // per ora faccio così perchè più comodo se si vuole si fa differenza tra attuali risorse e nuove risorse ecc.
+        rimuoviPeer(peer); //rimuovi il peer dalla hasmap
+        addPeer(peer.getIP(), peer.getPort(), nuoveRisorse); //aggiungi il peer con le nuove risorse
 
-    public void printAllPeers() {
+    }
+public void printAllPeers() {
         System.out.println("Peers registrati:");
         for (Tuple peer : hashPeer.keySet()) {
             System.out.println(peer.getIP() + ":" + peer.getPort());
@@ -84,27 +106,6 @@ public class Master {
                 System.out.print(t.getIP() + ":" + t.getPort() + " ");
             }
             System.out.println();
-        }
-    }
-
-    private List<String> downloadLog = new ArrayList<>();
-
-    public void registraDownload(String risorsa, Tuple da, Tuple a) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        String record = timestamp + " - " + risorsa + " da: " + da.getIP() + ":" + da.getPort() +
-                " a: " + a.getIP() + ":" + a.getPort();
-        downloadLog.add(record);
-        System.out.println("LOG: " + record); // stampa anche live, utile per debug
-    }
-
-    public void stampaLog() {
-        System.out.println("Log dei download:");
-        if (downloadLog.isEmpty()) {
-            System.out.println("Nessun download registrato.");
-        } else {
-            for (String entry : downloadLog) {
-                System.out.println(entry);
-            }
         }
     }
 
@@ -124,5 +125,53 @@ public class Master {
         }
     }
 
+    public void ascoltaPorta() {
+    ExecutorService threadPool = Executors.newCachedThreadPool(); // or fixed thread pool
 
+    while (true) {
+        try {
+            Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
+            threadPool.execute(() -> handleClient(clientSocket));
+        } catch (IOException e) {
+            System.err.println("Error accepting connection: " + e.getMessage());
+        }
+    }
+    }   
+
+    private void handleClient(Socket socket) {
+        
+    }
+
+
+
+    
+    
+
+
+    public void mandaMessaggio(Tuple peer){
+        int port = peer.getPort(); 
+        String IP = peer.getIP(); 
+
+        try{
+        ServerSocket serverSocket = new ServerSocket(port);
+        Socket clientSocket = serverSocket.accept(); // wait for client
+        
+        }
+        
+        catch (Exception e){
+            System.out.println("Errore nella creazione del server socket: " + e.getMessage());
+        }
+
+    }
+
+
+    
+    
 }
+
+    
+
+  
+
+    
+
