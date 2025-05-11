@@ -111,7 +111,7 @@ public class Peer {
         while (true) {
             try {
                 Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
-                new Thread(() -> gestisciClient(clientSocket)).start(); // Parallel handling
+                new Thread(() -> gestisciClient(clientSocket)).start(); // Per gestione parallela
                 
             } catch (IOException e) {
                 System.err.println("Error accepting connection: " + e.getMessage());
@@ -119,45 +119,52 @@ public class Peer {
         }
     }   
 
-    public void gestisciClient(Socket clientSocket) { //Assumo i 
-                    try (
-                    InputStream inputStream = clientSocket.getInputStream();
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                    //OutputStream outputStream = clientSocket.getOutputStream() DA METTERE NEL UPLOAD QUI COME PROMEMORIA  
-                ) { 
-                    // Leggi il header per determinare il tipo di dati
-                    String header = reader.readLine();
+    public void gestisciClient(Socket clientSocket) { //Assumo i messaggi in entrata siano formati in modo corretto, altrimenti si rischia di avere problemi di parsing, gestione errori da implementare
                     
-                    if (header != null) {
-                        String[] parts = header.split(",");
-                        String type = parts[0];  // Assuming first part indicates type
-                        switch (type) {
-                            case "TEXT":
-                                //handleText(reader);
+        try (
+                    InputStream inputStream = clientSocket.getInputStream();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));) { 
+                    
+                        // Leggi il header per determinare il tipo di dati
+                    String tipoMessaggio = reader.readLine();
+                    
+                    if (tipoMessaggio != null) {
+                        
+                        switch (tipoMessaggio) {
+                            case "UPLOAD":
+                             // attesa che resto del messaggio sia del tipo: IP prossimaLinea Port prossimaLinea nomeRisorsa
+                                
+                                Triplet richiestaUpload = new Triplet(reader.readLine(), new Tuple(reader.readLine(), Integer.parseInt(reader.readLine())));
+                                //Aggiungi a coda Upload
+                                this.codaUpload.add(richiestaUpload); 
+                                break;                        
+
+                            case "FILE": //nel caso il pacchetto ricevuto sia una risorsa che è stata richiesta
+                                gestisciFile(inputStream,  clientSocket);
+
                                 break;
-                                
-                            case "FILE":
-                                // Handle file data
-                                long fileSize = Long.parseLong(parts[1]); // Assuming file size is part of the header
-                                
-                                //handleFile(inputStream, fileSize, outputStream);
-                                break;
-                                
-                            // Add more cases for other types of data as needed
+
                             default:
-                                System.err.println("ERRORE, header non definito   " + type);
+                                System.err.println("ERRORE, header non definito   " + tipoMessaggio);
                         }
                     }
                 } catch (IOException e) {
                     System.err.println("ERRORE IOEXCEPTION" + e.getMessage());
                 }
              }            
-            }
-            
-        }
+     
+    public void gestisciFile(InputStream inputStream, Socket clientSocket) { //Gestione del file ricevuto, da implementare
+        try{
+        OutputStream outputStream = clientSocket.getOutputStream();   
+            // TODO Implementare
+    
+    }
+    catch(IOException e){
+        System.out.println("ERRORE IOEXCEPTION " + e.getMessage());
+    }    
         
     }
-
+            
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
