@@ -2,8 +2,10 @@ import java.io.FileNotFoundException;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
 import java.io.IOException;
@@ -11,8 +13,8 @@ import java.net.ServerSocket;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.net.Socket;
-import java.util.Queue; 
 
+import java.util.concurrent.Semaphore;
 
 
 public class Peer {
@@ -115,23 +117,58 @@ public class Peer {
     }
     }   
     
-    public Triplet getProssimoInCoda(){
+    public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
 
     public void gestisciUploadCoda(){
         //inventati modo di mettere in standby questo metodo, direi o utilizzare un semaforo (non binario) che riceve 
         //signal da metodo di ascolto  o signal await (equivalente di Java).
+        Semaphore uploadSignal = new Semaphore(0);
+
+        while(true){
+            try{
+                uploadSignal.acquire();
+                Triplet richiestaUpload = this.getProssimoInCoda(); // Prende il prossimo elemento in coda
+                
+                if(richiestaUpload != null){ // Se non è null, significa che c'è un upload da gestire
+                    this.UpLoad(richiestaUpload); // Esegue tentativo upload della risorsa
+                
+                }
+                else{
+                    System.out.println("ERRORE: Coda upload vuota, controlla funz. semaforo");
+                }
+                if((uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
+                    System.out.println("ERRORE: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
+
+                }
+            }
+
+            /*
+            catch (IOException e) {
+                System.out.println("Errore durante l'upload: " + e.getMessage());
+            }
+             */
+            catch(InterruptedException e){ //DA UTILIZZARE PER GESTIONE GRACEFUL DELLA CHIUSURA DEL THREAD, I.E. SE IL THREAD VIENE INTERROTTO GESTIRE GLI UPLOAD IN CODA, figata    
+                System.out.println("Errore durante l'attesa del segnale di upload: " + e.getMessage());
+            }
 
 
+        }
     }
 
-    public void UpLoad(String nomeRisorsa, String IPDestinatario, int Port){
+    public void UpLoad(Triplet RichiestaUpload){
+               //preferenza personnale, trovo più comodo passare la tripletta ed estrarre i dati solo quando necessario
+        
+        String nomeRisorsa = RichiestaUpload.getRisorsa();
+        String IPDestinatario = RichiestaUpload.getPeer().getIP();
+        int Port = RichiestaUpload.getPeer().getPort();
+
+        
         String path = this.hashRisorse.get(nomeRisorsa);
         //Fabbrica ed aggiungi metodo lettura  
         
         try{
-        
             Socket collegamentoUpload = new Socket(IPDestinatario, Port) ;
             
             // Fabbrica ed aggiungi metodo upload 
@@ -140,10 +177,10 @@ public class Peer {
             collegamentoUpload.close();
         }
         catch(Exception e){
-
+            System.out.println("Placeholder generico per gestione dell'errore durante prove, stack segue" + e.getMessage()); //CAMBIAMI
         }
 
-    }
+        }
 
 
 
