@@ -34,18 +34,14 @@ public class Peer {
         this.Port = Port;
         this.codaUpload = new LinkedBlockingQueue<>();
         
-         
-        /* 
-         NON sono sicuro che rendere la porta persistente sia una buona idea, più che altro per possibili problemi ed implicazioni lato master.
-        
-        
+       
         try {
-            this.serverSocket = new ServerSocket(Port); // server socket del master
+            this.serverSocket = new ServerSocket(Port); // server socket 
         } catch (Exception e) {
             this.serverSocket = null; // se non riesce a creare il server socket, lo setta a null
             System.out.println("Errore nella creazione del server socket: " + e.getMessage());
         }
-         */
+         
 
     }
 
@@ -104,23 +100,26 @@ public class Peer {
         return true;
     }
     
-    public void ascoltoPorta() {
-    
-    while (true) {
-        try {
-            Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
-            
-            
-        } catch (IOException e) {
-            System.err.println("Error accepting connection: " + e.getMessage());
+    public void ascoltoPorta() { //Metodo per l'ascolto della porta, continuamente runnato in un thread separato, genera dei thread per ogni accept così che più peer possano connettersi
+
+        while (true) {
+            try {
+                Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
+                new Thread(() -> gestisciClient(clientSocket)).start(); // Parallel handling
+                
+            } catch (IOException e) {
+                System.err.println("Error accepting connection: " + e.getMessage());
+            }
         }
-    }
     }   
-    
+
+    public void gestisciClient(Socket clientSocket) {
+        // Gestione della connessione con il peer, da implementare
+    }
+
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
-
     public void gestisciUploadCoda(){
         //inventati modo di mettere in standby questo metodo, direi o utilizzare un semaforo (non binario) che riceve 
         //signal da metodo di ascolto  o signal await (equivalente di Java).
@@ -138,10 +137,9 @@ public class Peer {
                 else{
                     System.out.println("ERRORE: Coda upload vuota, controlla funz. semaforo");
                 }
-                if((uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
-                    System.out.println("ERRORE: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
-
-                }
+                    if((uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
+                        System.out.println("ERRORE: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
+                    }
             }
 
             /*
@@ -156,7 +154,6 @@ public class Peer {
 
         }
     }
-
     public void UpLoad(Triplet RichiestaUpload){
                //preferenza personnale, trovo più comodo passare la tripletta ed estrarre i dati solo quando necessario
         
