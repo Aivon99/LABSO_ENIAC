@@ -1,8 +1,10 @@
 import java.io.FileNotFoundException;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -19,7 +21,7 @@ public class Peer {
     private int Port;
     private String IP; //IP del peer
     private ServerSocket serverSocket; // socket del peer per ricevere comunicazioni dal master
-    private Queue codaUpload; 
+    private BlockingQueue<Triplet> codaUpload; 
      
 
     public Peer(String IP, int Port) {
@@ -28,14 +30,25 @@ public class Peer {
          
         this.IP = IP;
         this.Port = Port;
-
+        this.codaUpload = new LinkedBlockingQueue<>();
+        
+         
+        /* 
+         NON sono sicuro che rendere la porta persistente sia una buona idea, più che altro per possibili problemi ed implicazioni lato master.
+        
+        
         try {
             this.serverSocket = new ServerSocket(Port); // server socket del master
         } catch (Exception e) {
             this.serverSocket = null; // se non riesce a creare il server socket, lo setta a null
             System.out.println("Errore nella creazione del server socket: " + e.getMessage());
-        }   
+        }
+         */
+
     }
+
+
+
     public String getIP() {
         return IP;
     }
@@ -101,6 +114,17 @@ public class Peer {
         }
     }
     }   
+    
+    public Triplet getProssimoInCoda(){
+        return this.codaUpload.poll(); 
+    }
+
+    public void gestisciUploadCoda(){
+        //inventati modo di mettere in standby questo metodo, direi o utilizzare un semaforo (non binario) che riceve 
+        //signal da metodo di ascolto  o signal await (equivalente di Java).
+
+
+    }
 
     public void UpLoad(String nomeRisorsa, String IPDestinatario, int Port){
         String path = this.hashRisorse.get(nomeRisorsa);
@@ -120,6 +144,8 @@ public class Peer {
         }
 
     }
+
+
 
     public void registratiAMaster(String IP, int Port) { //Registrazione al master, da implementare
         // TODO Auto-generated method stub
