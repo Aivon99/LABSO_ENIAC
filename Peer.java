@@ -38,11 +38,12 @@ public class Peer {
         
         this.hashRisorse = new HashMap<>();
         
-        this.IPMaster = IP;
-        this.PortMaster = Port;
+        this.IPMaster = IPMaster;
+        this.PortMaster = PortMaster;
          
         this.IP = IP;
         this.Port = Port;
+
         this.codaUpload = new LinkedBlockingQueue<>();
         
        
@@ -79,6 +80,7 @@ public class Peer {
     public Map<String, String> getTutteRisorse() {
         return hashRisorse;
     }
+  
     public boolean caricaListaRisorse(String pathLista ){ //Carica la lista risorse da un file di testo, alla hasmap nel costruttore  
         try{
         BufferedReader reader = new BufferedReader(new FileReader(pathLista));    
@@ -169,8 +171,6 @@ public class Peer {
     }
             
 
-
-
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
@@ -235,9 +235,22 @@ public class Peer {
 
 
 
-    public void registratiAMaster(String IP, int Port) { //Registrazione al master, da implementare
-        // TODO Auto-generated method stub
-        
+    public void registratiAMaster() { //Registrazione al master, da implementare
+        try 
+            {Socket socket = new Socket(IPMaster, PortMaster);
+            OutputStream outputStream = socket.getOutputStream();
+            
+            outputStream.write(("REGISTRAZIONE" + "\n").getBytes()); // Invia scopo del resto del messaggio
+            outputStream.write((this.IP + "\n").getBytes()); // invia IP del peer
+            outputStream.write((this.Port + "\n").getBytes()); // invia port del peer
+                //per ottenere la tabella si potrebbe unire questa funzione a caricaRisorse ? tnato vengono eseguite alla dichiarazione del peer....
+
+
+            socket.close();
+        }
+        catch (IOException e) {
+            System.out.println("ERRORE durante la registrazione al master: " + e.getMessage());
+        }
     }
 
     
