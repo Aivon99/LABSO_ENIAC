@@ -23,16 +23,5 @@ public class Tuple {
         this.IP = IP;
     }
 
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        Tuple other = (Tuple) obj;
-        return Port == other.Port && IP.equals(other.IP);
-    }
-
-    @Override
-    public int hashCode() {
-        return IP.hashCode() * 31 + Port;
-    }
+    
 }

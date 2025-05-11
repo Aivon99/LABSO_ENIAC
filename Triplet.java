@@ -8,36 +8,20 @@ public class Triplet { //Utilizzata per la gestione coda upload dei peer e per s
             this.peer = peer;
         }
     
-        public String getPeer() {
+        public Tuple getPeer() {
             return this.peer;
         }
     
-        public int getRisorsa() {
-            return this.risorsa;
+        public String getRisorsa() {
+            return this.Risorsa;
         }
     
         public void setRisorsa(String risorsa) {
             this.Risorsa = risorsa;
         }
     
-        public void setIP(String IP) {
-            this.IP = IP;
+        public void setPeer(Tuple peer) {
+            this.peer = peer;
         }
-    
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (obj == null || getClass() != obj.getClass()) return false;
-            Tuple other = (Tuple) obj;
-            return Port == other.Port && IP.equals(other.IP);
-        }
-    
-        @Override
-        public int hashCode() {
-            return IP.hashCode() * 31 + Port;
-        }
-    
-    
-
-
+            
 }
