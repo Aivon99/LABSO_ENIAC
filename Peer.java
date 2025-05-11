@@ -1,3 +1,5 @@
+
+//TODO DA ORDINARE E SEPARARE PER TIPO
 import java.io.FileNotFoundException;
 import java.util.HashMap;
 import java.util.Set;
@@ -16,6 +18,10 @@ import java.net.Socket;
 
 import java.util.concurrent.Semaphore;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.BufferedReader;
 
 public class Peer {
     private HashMap<String, String> hashRisorse;
@@ -113,8 +119,43 @@ public class Peer {
         }
     }   
 
-    public void gestisciClient(Socket clientSocket) {
-        // Gestione della connessione con il peer, da implementare
+    public void gestisciClient(Socket clientSocket) { //Assumo i 
+                    try (
+                    InputStream inputStream = clientSocket.getInputStream();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                    //OutputStream outputStream = clientSocket.getOutputStream() DA METTERE NEL UPLOAD QUI COME PROMEMORIA  
+                ) { 
+                    // Leggi il header per determinare il tipo di dati
+                    String header = reader.readLine();
+                    
+                    if (header != null) {
+                        String[] parts = header.split(",");
+                        String type = parts[0];  // Assuming first part indicates type
+                        switch (type) {
+                            case "TEXT":
+                                //handleText(reader);
+                                break;
+                                
+                            case "FILE":
+                                // Handle file data
+                                long fileSize = Long.parseLong(parts[1]); // Assuming file size is part of the header
+                                
+                                //handleFile(inputStream, fileSize, outputStream);
+                                break;
+                                
+                            // Add more cases for other types of data as needed
+                            default:
+                                System.err.println("ERRORE, header non definito   " + type);
+                        }
+                    }
+                } catch (IOException e) {
+                    System.err.println("ERRORE IOEXCEPTION" + e.getMessage());
+                }
+             }            
+            }
+            
+        }
+        
     }
 
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null

@@ -1,5 +1,5 @@
-public class Triplet { //Utilizzata per la gestione coda upload dei peer e per segnare a quale nodo è stata richiesta una risorsa (in modo fallimentare) 
-
+public class Triplet  { //Utilizzata per la gestione coda upload dei peer e per segnare a quale nodo è stata richiesta una risorsa (in modo fallimentare) 
+                        //NOTA, TODO valuta se randerlo estensione di Tuple, per rendere più veloce recupero di ip e porta (altrimenti, come ora, si fa pipe .getPeer().getIP())
         private String Risorsa;
         private Tuple peer;
     
