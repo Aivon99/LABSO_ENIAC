@@ -5,9 +5,6 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
 import java.io.IOException;
@@ -21,20 +18,28 @@ import java.util.concurrent.Semaphore;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.BufferedReader;
 
 public class Peer {
-    private HashMap<String, String> hashRisorse;
-     
+    private HashMap<String, String> hashRisorse; 
+      
     private int Port;
     private String IP; //IP del peer
+    
+    private int PortMaster;
+    private String IPMaster; //IP del peer
+    
     private ServerSocket serverSocket; // socket del peer per ricevere comunicazioni dal master
     private BlockingQueue<Triplet> codaUpload; 
      
 
-    public Peer(String IP, int Port) {
-
+    public Peer(String IP, int Port, String IPMaster, int PortMaster) {
+        
+     //TODO modificare metodo scelta IP e porta (specifiche non li danno come input)
+        
         this.hashRisorse = new HashMap<>();
+        
+        this.IPMaster = IP;
+        this.PortMaster = Port;
          
         this.IP = IP;
         this.Port = Port;
@@ -141,7 +146,6 @@ public class Peer {
 
                             case "FILE": //nel caso il pacchetto ricevuto sia una risorsa che è stata richiesta
                                 gestisciFile(inputStream,  clientSocket);
-
                                 break;
 
                             default:
@@ -149,11 +153,10 @@ public class Peer {
                         }
                     }
                 } catch (IOException e) {
-                    System.err.println("ERRORE IOEXCEPTION" + e.getMessage());
+                    System.err.println("ERRORE IOEXCEPTION" + e.getMessage()); //migliora
                 }
              }            
-     
-    public void gestisciFile(InputStream inputStream, Socket clientSocket) { //Gestione del file ricevuto, da implementare
+    public void gestisciFile(InputStream inputStream, Socket clientSocket) { // TODO Gestione del file ricevuto, da implementare
         try{
         OutputStream outputStream = clientSocket.getOutputStream();   
             // TODO Implementare
@@ -165,6 +168,9 @@ public class Peer {
         
     }
             
+
+
+
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
