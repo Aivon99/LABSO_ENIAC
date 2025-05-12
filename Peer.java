@@ -248,7 +248,6 @@ public class Peer {
        
        //manda richiesta al master per ottenere la lista peer con risorsa
         
-        //  manda richiesta al peer indicato
         String risposta = this.queryMaster(richiesta); //ATTESO che master risponda con SUCCESSO o FALLIMENTO, nel primo caso il peer è disponibile ed il resto della stringa è la triplet 
         
 
@@ -263,6 +262,8 @@ public class Peer {
                 System.out.println("ERRORE: risposta del master non valida");
                 return;
             }
+            
+        //  manda richiesta al peer indicato    
         try{
         richiesta.setPeer(new Tuple(parti[1].trim(), Integer.parseInt(parti[2].trim()))); //setta il peer da contattare, il resto della stringa è la triplet
         }
@@ -271,24 +272,16 @@ public class Peer {
             System.out.println("IP: " + parti[1]);
             System.out.println("Port: " + parti[2]);
         }
-
-
        //se esito positivo scarica file e aggiunge risorsa a lista
         String path = this.richiestaPeer(richiesta); 
        if(path.equals("NONDISPONIBILE")){ //se il peer non è disponibile, ripete la richiesta al master con specifiche peer provato
-
-            //System.out.println("Peer non disponibile, rimuovo peer dalla lista e ripeto la richiesta");
-            
+            //System.out.println("Peer non disponibile, rimuovo peer dalla lista e ripeto la richiesta");    
         DownLoad(richiesta);
        }
        else{ 
         //altrimenti aggiunge alla lista delle risorse/path
         this.aggiungiRisorsa(richiesta.getRisorsa(), path);
        }
-         
-       
-
-       
     }
 
 
