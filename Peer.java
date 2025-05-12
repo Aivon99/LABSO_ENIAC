@@ -1,6 +1,7 @@
 
 //TODO DA ORDINARE E SEPARARE PER TIPO
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.net.Socket;
 
@@ -241,38 +243,52 @@ public class Peer {
         }
  
     public void DownLoad(Triplet richiesta){ 
-             //La triplet viene inizialmente inizializzata come null nel peer e stringa nomerisorsa valido, il metodo è poi ricorsivo, qualora un tentativo fallisca
+        //La triplet viene inizialmente inizializzata come null nel peer e stringa nomerisorsa valido, il metodo è poi ricorsivo, qualora un tentativo fallisca
         // il tentativo di download viene ripetuto, con il peer appena tentato (che il master elimina dalla lista della risorsa in questione)  
-       // DA RAGIONARE SU COME SEGNALARE A QUESTO METODO CHE LA RICHIESTA E' FALLITA O ANDATA A BUON FINE, INTANTO METTO GIU' STRUTTURA BASIC     
-        // direi o un async con ID o qualcosa di simile 
-
+       
        //manda richiesta al master per ottenere la lista peer con risorsa
-
-
-       // se risorsa non disponibile termina 
-       
-       
+        
         //  manda richiesta al peer indicato
         String risposta = this.queryMaster(richiesta); //ATTESO che master risponda con SUCCESSO o FALLIMENTO, nel primo caso il peer è disponibile ed il resto della stringa è la triplet 
         
-        //Valuta risposta
+
+        //Valuta risposta (ho messo dei .trim() per eventualmente riparare a spazi messi per sbaglio alle estremità)
+        
         String[] parti = risposta.split(",", -1); 
-        if(parti[0].equals("FALLIMENTO")){ //se il master non ha trovato la risorsa
+        if(parti[0].trim().equals("FALLIMENTO")){ //se il master non ha trovato la risorsa termina tentativi
             System.out.println("Risorsa non disponibile");
             return;
         }
-        else if(!parti[0].equals("SUCCESSO")){ //se la risposta non è coerente 
-            System.out.println("ERRORE: risposta del master non valida");
-            return;
+            else if(!parti[0].trim().equals("SUCCESSO")){ //se la risposta non è coerente 
+                System.out.println("ERRORE: risposta del master non valida");
+                return;
+            }
+        try{
+        richiesta.setPeer(new Tuple(parti[1].trim(), Integer.parseInt(parti[2].trim()))); //setta il peer da contattare, il resto della stringa è la triplet
         }
-        
+        catch(Exception e){
+            System.out.println("ERRORE: formato indirizzo peer non conforme " + e.getMessage());
+            System.out.println("IP: " + parti[1]);
+            System.out.println("Port: " + parti[2]);
+        }
 
 
        //se esito positivo scarica file e aggiunge risorsa a lista
+        String path = this.richiestaPeer(richiesta); 
+       if(path.equals("NONDISPONIBILE")){ //se il peer non è disponibile, ripete la richiesta al master con specifiche peer provato
 
-       //se negativa ritenta
+            //System.out.println("Peer non disponibile, rimuovo peer dalla lista e ripeto la richiesta");
+            
+        DownLoad(richiesta);
+       }
+       else{ 
+        //altrimenti aggiunge alla lista delle risorse/path
+        this.aggiungiRisorsa(richiesta.getRisorsa(), path);
+       }
+         
+       
 
-       DownLoad(richiesta);
+       
     }
 
 
@@ -294,6 +310,45 @@ public class Peer {
         }
         return null;
     }
+    
+    public String richiestaPeer(Triplet richiesta){ //Richiesta al peer per scaricare la risorsa, ritorna il path dove viene salvata, 
+        //IMPORTANTE, IL PROF NON SPECIFICA IL TIPO DI RISORSA, IO ASSUMO CHE IL NOME INCLUDA IL FORMATO (PDF, JPG, TXT, ETC)
+    
+       try (
+        Socket socket = new Socket(richiesta.getPeer().getIP(), richiesta.getPeer().getPort());
+        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        InputStream inputStream = socket.getInputStream()
+        ) {
+        writer.println("FILE," + richiesta.toString());
+
+        String responseHeader = reader.readLine().trim();
+        if (responseHeader.equals("NONDISPONIBILE")) {
+            return "NONDISPONIBILE";
+        } else if (!responseHeader.equals("SUCCESSO")) {
+            System.out.println("Risposta non valida: " + responseHeader);
+            return null;
+        }
+
+        File outputFile = new File("received/" + richiesta.getRisorsa());
+
+        try (FileOutputStream fileOut = new FileOutputStream(outputFile)) {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            // Se la risposta è di successo viene salvata nel path specificato
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                fileOut.write(buffer, 0, bytesRead);
+            }
+        }
+
+        return outputFile.getAbsolutePath();
+
+    } catch (IOException e) {
+        System.out.println("Errore durante la ricezione del file: " + e.getMessage());
+        return null;
+    }
+}
+
 
     public void registratiAMaster() { //Registrazione al master, da implementare
         try 

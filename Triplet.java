@@ -15,7 +15,9 @@ public class Triplet  { //Utilizzata per la gestione coda upload dei peer e per 
         public String getRisorsa() {
             return this.Risorsa;
         }
-    
+        public String toString() {
+            return Risorsa + ","+ peer.getIP() +","  + peer.getPort();
+        }
         public void setRisorsa(String risorsa) {
             this.Risorsa = risorsa;
         }
