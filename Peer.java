@@ -18,6 +18,7 @@ import java.util.concurrent.Semaphore;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 
 public class Peer {
     private HashMap<String, String> hashRisorse; 
@@ -251,20 +252,47 @@ public class Peer {
        // se risorsa non disponibile termina 
        
        
-       //  manda richiesta al peer indicato
+        //  manda richiesta al peer indicato
+        String risposta = this.queryMaster(richiesta); //ATTESO che master risponda con SUCCESSO o FALLIMENTO, nel primo caso il peer è disponibile ed il resto della stringa è la triplet 
+        
+        //Valuta risposta
+        String[] parti = risposta.split(",", -1); 
+        if(parti[0].equals("FALLIMENTO")){ //se il master non ha trovato la risorsa
+            System.out.println("Risorsa non disponibile");
+            return;
+        }
+        else if(!parti[0].equals("SUCCESSO")){ //se la risposta non è coerente 
+            System.out.println("ERRORE: risposta del master non valida");
+            return;
+        }
+        
 
-        richiesta = this.queryMaster(richiesta); //ATTESO che master risponda con triplet "compilata"
-       
-        //attesa esito richiesta
-
-
-       //Valutazione esito richiesta
 
        //se esito positivo scarica file e aggiunge risorsa a lista
 
        //se negativa ritenta
 
        DownLoad(richiesta);
+    }
+
+
+    public String queryMaster(Triplet richiesta){ //Richiesta al master per ottenere la lista dei peer con la risorsa richiesta
+
+        try (
+         Socket socket = new Socket(IPMaster, PortMaster);
+         PrintWriter writer = new PrintWriter( socket.getOutputStream(), true);
+         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            writer.println(("QUERY,"+ richiesta.toString()).getBytes()); // Invia richiesta al master   (E' stato utilizzato questo perchè il master ha un BufferedReader che legge)      
+            String risposta = reader.readLine();
+            
+            return risposta; 
+        }
+        
+            catch (IOException e) {
+            System.out.println("ERRORE durante la query al master: " + e.getMessage());
+        }
+        return null;
     }
 
     public void registratiAMaster() { //Registrazione al master, da implementare
