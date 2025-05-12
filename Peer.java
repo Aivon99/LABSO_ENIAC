@@ -213,6 +213,7 @@ public class Peer {
 
         }
     }
+    
     public void UpLoad(Triplet RichiestaUpload){
                //preferenza personnale, trovo più comodo passare la tripletta ed estrarre i dati solo quando necessario
         
@@ -227,7 +228,7 @@ public class Peer {
         try{
             Socket collegamentoUpload = new Socket(IPDestinatario, Port) ;
             
-            // Fabbrica ed aggiungi metodo upload 
+            // TODO Fabbrica ed aggiungi metodo upload 
             
             
             collegamentoUpload.close();
@@ -237,8 +238,34 @@ public class Peer {
         }
 
         }
+ 
+    public void DownLoad(Triplet richiesta){ 
+             //La triplet viene inizialmente inizializzata come null nel peer e stringa nomerisorsa valido, il metodo è poi ricorsivo, qualora un tentativo fallisca
+        // il tentativo di download viene ripetuto, con il peer appena tentato (che il master elimina dalla lista della risorsa in questione)  
+       // DA RAGIONARE SU COME SEGNALARE A QUESTO METODO CHE LA RICHIESTA E' FALLITA O ANDATA A BUON FINE, INTANTO METTO GIU' STRUTTURA BASIC     
+        // direi o un async con ID o qualcosa di simile 
+
+       //manda richiesta al master per ottenere la lista peer con risorsa
 
 
+       // se risorsa non disponibile termina 
+       
+       
+       //  manda richiesta al peer indicato
+
+        richiesta = this.queryMaster(richiesta); //ATTESO che master risponda con triplet "compilata"
+       
+        //attesa esito richiesta
+
+
+       //Valutazione esito richiesta
+
+       //se esito positivo scarica file e aggiunge risorsa a lista
+
+       //se negativa ritenta
+
+       DownLoad(richiesta);
+    }
 
     public void registratiAMaster() { //Registrazione al master, da implementare
         try 
