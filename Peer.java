@@ -30,8 +30,10 @@ public class Peer {
     
     private ServerSocket serverSocket; // socket del peer per ricevere comunicazioni dal master
     private BlockingQueue<Triplet> codaUpload; 
-     
 
+    private Semaphore uploadSignal; // semaforo per gestire gli upload in coda
+
+    
     public Peer(String IP, int Port, String IPMaster, int PortMaster) {
         
      //TODO modificare metodo scelta IP e porta (specifiche non li danno come input)
@@ -46,7 +48,8 @@ public class Peer {
 
         this.codaUpload = new LinkedBlockingQueue<>();
         
-       
+        this.uploadSignal = new Semaphore(0);
+        
         try {
             this.serverSocket = new ServerSocket(Port); // server socket 
         } catch (Exception e) {
@@ -143,6 +146,8 @@ public class Peer {
                                 
                                 Triplet richiestaUpload = new Triplet(reader.readLine(), new Tuple(reader.readLine(), Integer.parseInt(reader.readLine())));
                                 //Aggiungi a coda Upload
+                                this.uploadSignal.release(); 
+    
                                 this.codaUpload.add(richiestaUpload); 
                                 break;                        
 
@@ -177,11 +182,11 @@ public class Peer {
     public void gestisciUploadCoda(){
         //inventati modo di mettere in standby questo metodo, direi o utilizzare un semaforo (non binario) che riceve 
         //signal da metodo di ascolto  o signal await (equivalente di Java).
-        Semaphore uploadSignal = new Semaphore(0);
+        
 
         while(true){
             try{
-                uploadSignal.acquire();
+                this.uploadSignal.acquire();
                 Triplet richiestaUpload = this.getProssimoInCoda(); // Prende il prossimo elemento in coda
                 
                 if(richiestaUpload != null){ // Se non è null, significa che c'è un upload da gestire
@@ -191,7 +196,7 @@ public class Peer {
                 else{
                     System.out.println("ERRORE: Coda upload vuota, controlla funz. semaforo");
                 }
-                    if((uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
+                    if((this.uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
                         System.out.println("ERRORE: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
                     }
             }
