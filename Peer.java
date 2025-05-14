@@ -1,5 +1,7 @@
 
 //TODO DA ORDINARE E SEPARARE PER TIPO
+import java.util.logging.Logger;
+
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.HashMap;
@@ -37,8 +39,11 @@ public class Peer {
     private Semaphore uploadSignal; // semaforo per gestire gli upload in coda
 
     
+    private static final Logger logger = Logger.getLogger(Peer.class.getName());
+
+
     public Peer(String IP, int Port, String IPMaster, int PortMaster) {
-        
+                
      //TODO modificare metodo scelta IP e porta (specifiche non li danno come input)
         
         this.hashRisorse = new HashMap<>();
@@ -57,7 +62,7 @@ public class Peer {
             this.serverSocket = new ServerSocket(Port); // server socket 
         } catch (Exception e) {
             this.serverSocket = null; // se non riesce a creare il server socket, lo setta a null
-            System.out.println("Errore nella creazione del server socket: " + e.getMessage());
+            logger.severe("Errore nella creazione del server socket: " + e.getMessage());
         }
          
 
@@ -108,11 +113,11 @@ public class Peer {
             return false;
         }
         catch (IOException e){
-            System.out.println("Errore di I/O: " + e.getMessage());
+            logger.severe("Errore di I/O: " + e.getMessage());
             return false;
         }
         catch (Exception e){
-            System.out.println("Errore: " + e.getMessage());
+            logger.severe("Errore: " + e.getMessage());
             return false;
         }   
 
@@ -139,44 +144,43 @@ public class Peer {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));) { 
                     
                         // Leggi il header per determinare il tipo di dati
-                    String tipoMessaggio = reader.readLine();
+                    String messaggio = reader.readLine();
+                     
+                    String[] parti = messaggio.split(",");
                     
-                    if (tipoMessaggio != null) {
+
+                    if (parti[0] != null) {
                         
-                        switch (tipoMessaggio) {
+                        switch (parti[0]) {
                             case "UPLOAD":
+                            if(parti.length == 4){
                              // attesa che resto del messaggio sia del tipo: IP prossimaLinea Port prossimaLinea nomeRisorsa
                                 
-                                Triplet richiestaUpload = new Triplet(reader.readLine(), new Tuple(reader.readLine(), Integer.parseInt(reader.readLine())));
+                                Triplet richiestaUpload = new Triplet(parti[1], new Tuple(parti[2], Integer.parseInt(parti[3])));
                                 //Aggiungi a coda Upload
                                 this.uploadSignal.release(); 
     
                                 this.codaUpload.add(richiestaUpload); 
-                                break;                        
-
-                            case "FILE": //nel caso il pacchetto ricevuto sia una risorsa che è stata richiesta
-                                gestisciFile(inputStream,  clientSocket);
-                                break;
+                                break;           }             
+                                else{
+                                    logger.severe("ERRORE, formato messaggio non valido " + messaggio);
+                                    break;
+                                }
+                            
 
                             default:
-                                System.err.println("ERRORE, header non definito   " + tipoMessaggio);
+                                System.err.println("ERRORE, header non definito   " + messaggio);
                         }
                     }
                 } catch (IOException e) {
                     System.err.println("ERRORE IOEXCEPTION" + e.getMessage()); //migliora
                 }
              }            
-    public void gestisciFile(InputStream inputStream, Socket clientSocket) { // TODO Gestione del file ricevuto, da implementare
-        try{
-        OutputStream outputStream = clientSocket.getOutputStream();   
-            // TODO Implementare
     
-    }
-    catch(IOException e){
-        System.out.println("ERRORE IOEXCEPTION " + e.getMessage());
-    }    
         
-    }
+        
+        
+    
             
 
     public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
@@ -197,20 +201,20 @@ public class Peer {
                 
                 }
                 else{
-                    System.out.println("ERRORE: Coda upload vuota, controlla funz. semaforo");
+                    logger.severe("Errore: Coda upload vuota, controlla funz. semaforo");
                 }
                     if((this.uploadSignal.availablePermits() == 0) && (this.codaUpload.peek() != null)){ // PER DEBUGGING, DA RIMUOVERE  SE NON CI SONO PERMESSI MA CI SONO ALTRI ELEMENTI IN CODA, SEGNA A TERMINALE, EVENTUALMENTE CAMBIARE A LOG  
-                        System.out.println("ERRORE: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
+                        logger.severe("Errore: Coda upload non vuota ma non ci sono permessi, controlla funz. semaforo");
                     }
             }
 
             /*
             catch (IOException e) {
-                System.out.println("Errore durante l'upload: " + e.getMessage());
+                logger.severe("Errore durante l'upload: " + e.getMessage());
             }
              */
             catch(InterruptedException e){ //DA UTILIZZARE PER GESTIONE GRACEFUL DELLA CHIUSURA DEL THREAD, I.E. SE IL THREAD VIENE INTERROTTO GESTIRE GLI UPLOAD IN CODA, figata    
-                System.out.println("Errore durante l'attesa del segnale di upload: " + e.getMessage());
+                logger.severe("Errore durante l'attesa del segnale di upload: " + e.getMessage());
             }
 
 
@@ -259,16 +263,16 @@ public class Peer {
             return;
         }
             else if(!parti[0].trim().equals("SUCCESSO")){ //se la risposta non è coerente 
-                System.out.println("ERRORE: risposta del master non valida");
+                logger.severe("Errore: risposta del master non valida");
                 return;
             }
-            
+
         //  manda richiesta al peer indicato    
         try{
         richiesta.setPeer(new Tuple(parti[1].trim(), Integer.parseInt(parti[2].trim()))); //setta il peer da contattare, il resto della stringa è la triplet
         }
         catch(Exception e){
-            System.out.println("ERRORE: formato indirizzo peer non conforme " + e.getMessage());
+            logger.severe("Errore: formato indirizzo peer non conforme " + e.getMessage());
             System.out.println("IP: " + parti[1]);
             System.out.println("Port: " + parti[2]);
         }
@@ -299,7 +303,7 @@ public class Peer {
         }
         
             catch (IOException e) {
-            System.out.println("ERRORE durante la query al master: " + e.getMessage());
+            logger.severe("Errore durante la query al master: " + e.getMessage());
         }
         return null;
     }
@@ -337,7 +341,7 @@ public class Peer {
         return outputFile.getAbsolutePath();
 
     } catch (IOException e) {
-        System.out.println("Errore durante la ricezione del file: " + e.getMessage());
+        logger.severe("Errore durante la ricezione del file: " + e.getMessage());
         return null;
     }
 }
@@ -357,7 +361,7 @@ public class Peer {
             socket.close();
         }
         catch (IOException e) {
-            System.out.println("ERRORE durante la registrazione al master: " + e.getMessage());
+            logger.severe("Errore durante la registrazione al master: " + e.getMessage());
         }
     }
 
