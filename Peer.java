@@ -12,11 +12,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Map;
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.net.Socket;
-
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Semaphore;
 
 import java.io.InputStream;
@@ -314,10 +316,25 @@ public class Peer {
        try (
         Socket socket = new Socket(richiesta.getPeer().getIP(), richiesta.getPeer().getPort());
         PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+    
+        BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
+        ByteArrayOutputStream headerBuf = new ByteArrayOutputStream();
+        
+        
+        ) {
+        
+        writer.println("UPLOAD," + richiesta.toString());
+                
+        /* 
+        try (
+        Socket socket = new Socket(richiesta.getPeer().getIP(), richiesta.getPeer().getPort());
+        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         InputStream inputStream = socket.getInputStream()
         ) {
-        writer.println("FILE," + richiesta.toString());
+        writer.println("UPLOAD," + richiesta.toString());
+
+            
 
         String responseHeader = reader.readLine().trim();
         if (responseHeader.equals("NONDISPONIBILE")) {
@@ -326,24 +343,42 @@ public class Peer {
             System.out.println("Risposta non valida: " + responseHeader);
             return null;
         }
+        */
+
+        int b;
+        while ((b = bis.read()) != -1) {
+        if (b == '\n') break; // simple header delimiter
+        headerBuf.write(b);
+        }
+        String headerRisposta = headerBuf.toString(StandardCharsets.UTF_8);
+
+        if (headerRisposta.equals("NONDISPONIBILE")) {
+            return "NONDISPONIBILE";
+        } else if (!headerRisposta.equals("SUCCESSO")) {
+            logger.severe("ERRORE: Risposta non valida: " + headerRisposta);
+            return null;
+        }
+
 
         File outputFile = new File("received/" + richiesta.getRisorsa());
 
         try (FileOutputStream fileOut = new FileOutputStream(outputFile)) {
             byte[] buffer = new byte[4096];
             int bytesRead;
-            // Se la risposta è di successo viene salvata nel path specificato
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+            while ((bytesRead = bis.read(buffer)) != -1) {
                 fileOut.write(buffer, 0, bytesRead);
-            }
+                }
         }
-
+        catch (IOException e) {
+            logger.severe("ERRORE durante la scrittura/ricezione del file: " +richiesta.getRisorsa() +"/n" + e.getMessage());
+            return null;
+        }
         return outputFile.getAbsolutePath();
 
-    } catch (IOException e) {
-        logger.severe("Errore durante la ricezione del file: " + e.getMessage());
-        return null;
-    }
+        } catch (IOException e) {
+            logger.severe("Errore durante la ricezione del file: " + e.getMessage());
+            return null;
+        }
 }
 
 
