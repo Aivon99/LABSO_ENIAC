@@ -1,0 +1,30 @@
+PeerListener.java
+
+Usa una sola porta (9000) per ascoltare connessioni in arrivo
+Usa un solo ServerSocket per evitare errori di binding
+Ha un thread di ascolto (run()), che chiama accept() in loop
+Poi, per ogni connessione accettata:
+- Crea un nuovo "Socket"
+- Lancia un thread separato (PeerHandler) per gestire i messaggi.
+
+per verificare se funziona, ho fatto dei test:
+Ho eseguito
+Test-NetConnection -ComputerName localhost -Port 9000
+per verificare se la porta 9000 era aperta e in ascolto
+(se il risultato è TcpTestSucceeded : True allora è connesso)
+
+Far partire in un altro prompt (dopo aver fatto javac Main.java PeerListener.java)
+java Main
+
+
+poi in un altro prompt:
+telnet localhost 9000
+- Se scrivi e ping
+- Il server ha ricevuto: ping
+- Il server ha risposto: pong
+- Telnet ha mostrato: pong
+
+(se poi vai a vere dove hai eseguito Main, riceverai
+Nuova connessione da: /[0:0:0:0:0:0:0:1]:51249
+Ricevuto: ping)
+
