@@ -7,14 +7,15 @@ Poi, per ogni connessione accettata:
 - Crea un nuovo "Socket"
 - Lancia un thread separato (PeerHandler) per gestire i messaggi.
 
+
+Far partire in un altro prompt (dopo aver fatto javac Main.java PeerListener.java)
+java Main
+
 per verificare se funziona, ho fatto dei test:
 Ho eseguito
 Test-NetConnection -ComputerName localhost -Port 9000
 per verificare se la porta 9000 era aperta e in ascolto
 (se il risultato è TcpTestSucceeded : True allora è connesso)
-
-Far partire in un altro prompt (dopo aver fatto javac Main.java PeerListener.java)
-java Main
 
 
 poi in un altro prompt:
