@@ -40,11 +40,23 @@ class PeerHandler implements Runnable {
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
         ) {
+            // Thread di scrittura automatica
+            new Thread(() -> {
+                try {
+                    while (true) {
+                        out.println("[SERVER] Scrittura automatica ogni 5 secondi");
+                        Thread.sleep(5000);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Errore nel thread di scrittura: " + e.getMessage());
+                }
+            }).start();
+
+            // Lettura da client
             String inputLine;
             while ((inputLine = in.readLine()) != null) {
                 System.out.println("Ricevuto: " + inputLine);
 
-                // Esegui operazioni in base al comando ricevuto
                 if (inputLine.startsWith("upload")) {
                     // gestisci upload file
                 } else if (inputLine.equals("ping")) {
