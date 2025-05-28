@@ -25,7 +25,7 @@ telnet localhost 9000
 - Il server ha risposto: pong
 - Telnet ha mostrato: pong
 
-(se poi vai a vere dove hai eseguito Main, riceverai
+(se poi vai a vedere la finestre dove hai eseguito Main, riceverai
 Nuova connessione da: /[0:0:0:0:0:0:0:1]:51249
 Ricevuto: ping)
 
