@@ -9,12 +9,22 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.net.Socket;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import java.util.logging.Logger;
 
 public class Master {
-
-    private HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorsa 
-    private HashMap<String, List<Tuple> > hashRisorse; // risorsa --> lista di peer
+    private final HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorsa
+    private final HashMap<String, List<Tuple> > hashRisorse; // risorsa --> lista di peer
     private ServerSocket serverSocket; // socket del master per ricevere le richieste dai peer
+    private final Map<String, List<LogEntry>> downloadLogs;
+    private final Scanner scanner;
+    private boolean running;
+    private final Object tableLock = new Object(); // Per la sincronizzazione della tabella
+    private static final Logger logger = Logger.getLogger(Master.class.getName());
 
     public Master(int Port) { // costruttore del master
         this.hashRisorse = new HashMap<>();
@@ -25,42 +35,32 @@ public class Master {
             this.serverSocket = null; // se non riesce a creare il server socket, lo setta a null
             System.out.println("Errore nella creazione del server socket: " + e.getMessage());
         }
+        this.downloadLogs = new ConcurrentHashMap<>();
+        this.scanner = new Scanner(System.in);
+        this.running = true;
+    }
+    public void addPeer(String IP, int Port, List<String> risorse) {
+        synchronized (tableLock) {
+            Tuple peer = new Tuple(IP, Port);
+            hashPeer.put(peer, risorse);
 
-        
-    }    
-
-       public void addPeer(String IP, int Port, List<String> risorse) {
-        Tuple peer = new Tuple(IP, Port);
-        hashPeer.put(peer, risorse);
-
-        for (String risorsa : risorse) {
-            if (hashRisorse.containsKey(risorsa)) {
-                List<Tuple> peerList = hashRisorse.get(risorsa);
-                peerList.add(peer);
-                hashRisorse.put(risorsa, peerList);
-            } else {
-                List<Tuple> peerList = new ArrayList<>();
-
-                peerList.add(peer);
-                hashRisorse.put(risorsa, peerList);
+            for (String risorsa : risorse) {
+                hashRisorse.computeIfAbsent(risorsa, _ -> new ArrayList<>()).add(peer);
             }
         }
-      }
+    }
 
     public Tuple getPeerRisorsa(String risorsa) {
-        if (hashRisorse.containsKey(risorsa)) {
-            List<Tuple> peerList = hashRisorse.get(risorsa);
-
-            return peerList.get(0); //restituisci il primo peer della lista (o a caso in caso cambia)
+        synchronized (tableLock) {
+            if (hashRisorse.containsKey(risorsa)) {
+                List<Tuple> peerList = hashRisorse.get(risorsa);
+                if (!peerList.isEmpty()) {
+                    return peerList.get(0);
+                }
+            }
+            return null;
         }
-        else{ //se la risorsa non è presente nella hasmap (altrimenti si fa gestione errore ma non saprei se ha senso)
-            System.out.println(risorsa + " non è presente nella hasmap"); 
-            return null; //restituisci null 
-        }
-    }  
-    
-  
-    
+    }
     public void rimuoviPeer(Tuple peer) {
         List<String> risorse = hashPeer.get(peer);
 
@@ -85,19 +85,18 @@ public class Master {
         System.out.println("Peer rimosso: " + peer.getIP() + ":" + peer.getPort());
     }
 
-    
+
     public void modificaPeer(Tuple peer, List<String> nuoveRisorse){ // per ora faccio così perchè più comodo se si vuole si fa differenza tra attuali risorse e nuove risorse ecc.
         rimuoviPeer(peer); //rimuovi il peer dalla hasmap
         addPeer(peer.getIP(), peer.getPort(), nuoveRisorse); //aggiungi il peer con le nuove risorse
 
     }
-public void printAllPeers() {
+    public void printAllPeers() {
         System.out.println("Peers registrati:");
         for (Tuple peer : hashPeer.keySet()) {
             System.out.println(peer.getIP() + ":" + peer.getPort());
         }
     }
-
     public void printAllResources() {
         System.out.println("Risorse disponibili:");
         for (String risorsa : hashRisorse.keySet()) {
@@ -108,7 +107,6 @@ public void printAllPeers() {
             System.out.println();
         }
     }
-
     public void inspectNodes() {
         if (hashPeer.isEmpty()) {
             System.out.println("Nessun peer registrato.");
@@ -124,51 +122,201 @@ public void printAllPeers() {
             }
         }
     }
-
     public void ascoltaPorta() {
-    ExecutorService threadPool = Executors.newCachedThreadPool(); // or fixed thread pool
+        ExecutorService threadPool = Executors.newCachedThreadPool(); // or fixed thread pool
 
-    while (true) {
-        try {
-            Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
-            threadPool.execute(() -> handleClient(clientSocket));
-        } catch (IOException e) {
-            System.err.println("Error accepting connection: " + e.getMessage());
+        while (true) {
+            try {
+                Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
+                threadPool.execute(() -> handleClient(clientSocket));
+            } catch (IOException e) {
+                System.err.println("Error accepting connection: " + e.getMessage());
+            }
         }
     }
-    }   
 
     private void handleClient(Socket socket) {
-        
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
+
+            String request = reader.readLine();
+            String[] parti = request.split(",");
+
+            switch (parti[0]) {
+                case "REGISTER":
+                    handleRegister(parti, writer);
+                    break;
+                case "QUERY":
+                    handleQuery(parti, writer);
+                    break;
+                case "DOWNLOAD":
+                    handleDownload(parti, writer);
+                    break;
+                case "LISTDATA":
+                    handleListData(writer);
+                    break;
+                case "QUIT":
+                    handleQuit(parti, writer);
+                    break;
+                case "REMOVE_PEER":
+                    handleRemovePeer(parti, writer);
+                    break;
+            }
+        } catch (IOException e) {
+            logger.severe("Errore nella gestione del client: " + e.getMessage());
+        }
     }
 
+    private void handleRegister(String[] parti, PrintWriter writer) {
+        try {
+            System.out.println("Ricevuta richiesta di registrazione: " + String.join(",", parti));
+            
+            if (parti.length < 4) {
+                System.out.println("ERRORE: Formato comando non valido. Parti ricevute: " + parti.length);
+                writer.println("ERRORE: Formato comando non valido");
+                return;
+            }
 
-
-    
-    
-
-
-    public void mandaMessaggio(Tuple peer){
-        int port = peer.getPort(); 
-        String IP = peer.getIP(); 
-
-        try{
-        ServerSocket serverSocket = new ServerSocket(port);
-        Socket clientSocket = serverSocket.accept(); // wait for client
-        
+            String IP = parti[1];
+            int Port = Integer.parseInt(parti[2]);
+            String[] risorseArray = parti[3].split(";");
+            List<String> risorse = Arrays.asList(risorseArray);
+            
+            System.out.println("Registrazione nuovo peer: " + IP + ":" + Port);
+            System.out.println("Risorse: " + String.join(", ", risorse));
+            
+            addPeer(IP, Port, risorse);
+            writer.println("SUCCESSO");
+            System.out.println("Registrazione completata con successo");
+            
+        } catch (Exception e) {
+            logger.severe("Errore durante la registrazione del peer: " + e.getMessage());
+            writer.println("ERRORE: " + e.getMessage());
         }
-        
-        catch (Exception e){
-            System.out.println("Errore nella creazione del server socket: " + e.getMessage());
-        }
-
     }
 
+    private void handleQuery(String[] parti, PrintWriter writer) {
+        String risorsa = parti[1];
+        Tuple peer = getPeerRisorsa(risorsa);
+        if (peer != null) {
+            writer.println("SUCCESSO," + peer.getIP() + "," + peer.getPort());
+        } else {
+            writer.println("FALLIMENTO");
+        }
+    }
 
-    
-    
+    private void handleDownload(String[] parti, PrintWriter writer) {
+        String risorsa = parti[1];
+        String fromIP = parti[2];
+        int fromPort = Integer.parseInt(parti[3]);
+        String toIP = parti[4];
+        int toPort = Integer.parseInt(parti[5]);
+
+        LogEntry entry = new LogEntry(risorsa, fromIP + ":" + fromPort, toIP + ":" + toPort, true);
+        downloadLogs.computeIfAbsent(risorsa, _ -> new ArrayList<>()).add(entry);
+        writer.println("SUCCESSO");
+    }
+
+    private void handleListData(PrintWriter writer) {
+        synchronized (tableLock) {
+            for (Map.Entry<String, List<Tuple>> entry : hashRisorse.entrySet()) {
+                writer.println(entry.getKey() + ": " + 
+                    entry.getValue().stream()
+                        .map(t -> t.getIP() + ":" + t.getPort())
+                        .collect(Collectors.joining(", ")));
+            }
+        }
+    }
+
+    private void handleQuit(String[] parti, PrintWriter writer) {
+        String IP = parti[1];
+        int Port = Integer.parseInt(parti[2]);
+        Tuple peer = new Tuple(IP, Port);
+        rimuoviPeer(peer);
+        writer.println("SUCCESSO");
+    }
+
+    private void handleRemovePeer(String[] parti, PrintWriter writer) {
+        synchronized (tableLock) {
+            String risorsa = parti[1];
+            String IP = parti[2];
+            int Port = Integer.parseInt(parti[3]);
+            Tuple peer = new Tuple(IP, Port);
+            
+            if (hashRisorse.containsKey(risorsa)) {
+                List<Tuple> peerList = hashRisorse.get(risorsa);
+                peerList.remove(peer);
+                if (peerList.isEmpty()) {
+                    hashRisorse.remove(risorsa);
+                }
+            }
+            writer.println("SUCCESSO");
+        }
+    }
+
+    public void startInteractiveSession() {
+        new Thread(this::handleUserInput).start();
+    }
+
+    private void handleUserInput() {
+        while (running) {
+            System.out.print("> ");
+            String command = scanner.nextLine();
+            processCommand(command);
+        }
+    }
+
+    private void processCommand(String command) {
+        String[] parts = command.split(" ");
+        switch (parts[0]) {
+            case "listdata":
+                listAllResources();
+                break;
+            case "inspectNodes":
+                inspectNodes();
+                break;
+            case "log":
+                showLogs();
+                break;
+            case "quit":
+                quit();
+                break;
+            default:
+                System.out.println("Comando non riconosciuto");
+        }
+    }
+
+    private void listAllResources() {
+        synchronized (tableLock) {
+            System.out.println("Risorse disponibili:");
+            for (Map.Entry<String, List<Tuple>> entry : hashRisorse.entrySet()) {
+                System.out.print(entry.getKey() + ": ");
+                for (Tuple peer : entry.getValue()) {
+                    System.out.print(peer.getIP() + ":" + peer.getPort() + " ");
+                }
+                System.out.println();
+            }
+        }
+    }
+
+    private void showLogs() {
+        System.out.println("Risorse scaricate:");
+        for (List<LogEntry> entries : downloadLogs.values()) {
+            for (LogEntry entry : entries) {
+                System.out.println(entry);
+            }
+        }
+    }
+
+    private void quit() {
+        running = false;
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            logger.severe("Errore durante la chiusura del server: " + e.getMessage());
+        }
+    }
 }
-
     
 
   
