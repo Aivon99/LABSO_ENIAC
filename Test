@@ -24,6 +24,11 @@ telnet localhost 9000
 - Il server ha ricevuto: ping
 - Il server ha risposto: pong
 - Telnet ha mostrato: pong
+(se poi vai a vedere la finestre dove hai eseguito Main, riceverai
+Nuova connessione da: /[0:0:0:0:0:0:0:1]:51249
+Ricevuto: ping)
+
+
 
 --comandi da fare:
 javac *.java
@@ -35,7 +40,18 @@ java Main peer 127.0.0.1 9000
 Nuovo terminale->Peer2:                 incrementa da solo la porta 5000 di default
 java Main peer 127.0.0.1 9000
 
-(se poi vai a vedere la finestre dove hai eseguito Main, riceverai
-Nuova connessione da: /[0:0:0:0:0:0:0:1]:51249
-Ricevuto: ping)
+da provare:
+Nel primo peer, aggiungi alcune risorse:
 
+> add file1.txt Contenuto del file 1
+> add file2.txt Contenuto del file 2
+Nel secondo peer, prova a
+
+listdata remote    # Dovrebbe mostrare le risorse del primo peer
+> download file1.txt # Dovrebbe scaricare il file dal primo peer
+> listdata local     # Dovrebbe mostrare il file scaricato
+
+Nel master, puoi usare:
+listdata          # Mostra tutte le risorse disponibili
+> inspectNodes      # Mostra i dettagli di ogni peer
+> log              # Mostra il log dei download
