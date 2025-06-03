@@ -350,6 +350,7 @@ public class Peer {
         if (b == '\n') break; // simple header delimiter
         headerBuf.write(b);
         }
+        
         String headerRisposta = headerBuf.toString(StandardCharsets.UTF_8);
 
         if (headerRisposta.equals("NONDISPONIBILE")) {
