@@ -38,7 +38,7 @@ public class Peer {
     private String IPMaster; //IP del peer
     
     private ServerSocket serverSocket; // socket del peer per ricevere comunicazioni dal master
-    private BlockingQueue<Triplet> codaUpload; 
+    private BlockingQueue<RichiestaUpload> codaUpload; // coda per gestire le richieste di upload in arrivo dai peer, contiene la Triplet con le info ed il socket di riferimento 
 
     private Semaphore uploadSignal; // semaforo per gestire gli upload in coda
 
@@ -158,7 +158,7 @@ public class Peer {
                             if(parti.length == 4){
                              // attesa che resto del messaggio sia del tipo: IP prossimaLinea Port prossimaLinea nomeRisorsa
 
-                                Triplet richiestaUpload = new Triplet(parti[1], new Tuple(parti[2], Integer.parseInt(parti[3])));
+                                RichiestaUpload richiestaUpload = new RichiestaUpload(new Triplet(parti[1], new Tuple(parti[2], Integer.parseInt(parti[3]))), clientSocket);
                                 //Aggiungi a coda Upload
                                 this.uploadSignal.release();
 
@@ -180,7 +180,7 @@ public class Peer {
              }            
      
 
-    public Triplet getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
+    public RichiestaUpload getProssimoInCoda(){ // Restituisce il prossimo elemento in coda, se non ci sono elementi in coda restituisce null
         return this.codaUpload.poll(); 
     }
     public void gestisciUploadCoda(){
@@ -191,7 +191,7 @@ public class Peer {
         while(true){
             try{
                 this.uploadSignal.acquire();
-                Triplet richiestaUpload = this.getProssimoInCoda(); // Prende il prossimo elemento in coda
+                RichiestaUpload richiestaUpload = this.getProssimoInCoda(); // Prende il prossimo elemento in coda
                 
                 if(richiestaUpload != null){ // Se non è null, significa che c'è un upload da gestire
                     this.UpLoad(richiestaUpload); // Esegue tentativo upload della risorsa
@@ -218,10 +218,10 @@ public class Peer {
         }
     }
     
-    public void UpLoad(Triplet RichiestaUpload) {
-        String nomeRisorsa = RichiestaUpload.getRisorsa();
-        String IPDestinatario = RichiestaUpload.getPeer().getIP();
-        int Port = RichiestaUpload.getPeer().getPort();
+    public void UpLoad(RichiestaUpload richiestaUpload) {
+        String nomeRisorsa = richiestaUpload.getRichiesta().getRisorsa();
+        String IPDestinatario = richiestaUpload.getRichiesta().getPeer().getIP();
+        int Port = richiestaUpload.getRichiesta().getPeer().getPort();
 
         String path = this.hashRisorse.get(nomeRisorsa);
         if (path == null) {
@@ -440,7 +440,7 @@ public class Peer {
         try (Socket socket = new Socket(IPMaster, PortMaster);
              PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
             
-            writer.println("QUIT," + IP + "," + Port);
+            writer.println("QUIT," + IP +  "," + Port);
             
         } catch (IOException e) {
             logger.severe("Errore nella notifica di disconnessione al master: " + e.getMessage());
