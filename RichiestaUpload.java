@@ -11,7 +11,7 @@ public class RichiestaUpload {
     public Triplet getRichiesta() {
         return richiesta;
     }
-    public Socket getSocketRif() {
+    public Socket getSocket() {
         return socketRif;
     }
 

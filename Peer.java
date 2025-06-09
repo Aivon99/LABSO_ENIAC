@@ -220,27 +220,49 @@ public class Peer {
     
     public void UpLoad(RichiestaUpload richiestaUpload) {
         String nomeRisorsa = richiestaUpload.getRichiesta().getRisorsa();
-        String IPDestinatario = richiestaUpload.getRichiesta().getPeer().getIP();
-        int Port = richiestaUpload.getRichiesta().getPeer().getPort();
+         Socket socketUpload = richiestaUpload.getSocket();
 
         String path = this.hashRisorse.get(nomeRisorsa);
         if (path == null) {
-            logger.severe("Risorsa non trovata: " + nomeRisorsa);
+            
+            try(PrintWriter writer = new PrintWriter(socketUpload.getOutputStream(), true);)
+            {
+            writer.println("NONDISPONIBILE");
             return;
-        }
-        try (Socket collegamentoUpload = new Socket(IPDestinatario, Port);
-             PrintWriter writer = new PrintWriter(collegamentoUpload.getOutputStream(), true);
-             OutputStream out = collegamentoUpload.getOutputStream()) {
+            } catch (IOException e) {
+                logger.severe("Errore durante l'invio della risposta: " + e.getMessage());
+            }            
+        } 
+        
+        else {//se il path è non nullo e non vuoto provo a procedere all'upload della risorsa
             
-            writer.println("UPLOAD," + nomeRisorsa);
-            writer.flush();
-            
-            // Invia il file
-            Files.copy(Paths.get(path), out);
-            
-        } catch (Exception e) {
-            logger.severe("Errore durante l'upload: " + e.getMessage());
-        }
+            File file = new File(path);
+            boolean exists = file.exists();
+
+            if (!exists) {
+                logger.severe("Il file non esiste: " + path);
+                try (PrintWriter writer = new PrintWriter(socketUpload.getOutputStream(), true)) {
+                    writer.println("NONDISPONIBILE"); 
+
+                } catch (IOException e) {
+                    logger.severe("Errore durante l'invio della risposta: " + e.getMessage());
+                }
+                
+                return;
+            }
+
+            try (
+                PrintWriter writer = new PrintWriter(socketUpload.getOutputStream(), true);
+                OutputStream out = socketUpload.getOutputStream()) {
+                
+                writer.println("SUCCESSO");
+                writer.flush();
+                // Invia il file
+                Files.copy(Paths.get(path), out);
+                
+            } catch (Exception e) {
+                logger.severe("Errore durante l'upload: " + e.getMessage());
+            }}
     }
  
     public void DownLoad(Triplet richiesta) {
