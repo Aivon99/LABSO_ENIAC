@@ -94,36 +94,23 @@ public class Peer {
         return hashRisorse;
     }
   
-    public boolean caricaListaRisorse(String pathLista ){ //Carica la lista risorse da un file di testo, alla hasmap nel costruttore  
-        try{
-        BufferedReader reader = new BufferedReader(new FileReader(pathLista));    
-        String line;
-
-
-        while ((line = reader.readLine()) != null) { // Legge ogni riga del file
-            String[] parts = line.split(","); // Divide la riga in due parti, nome e path, assume siano separati da virgola; 
-                                                    // TODO: controlla se separatore va bene e fa prove per vedere se spazi causano problemi  
-
-            this.aggiungiRisorsa(parts[0], parts[1]);;   //aggiunge le due componenti alla hashmap
-        }
-        
-
-        reader.close();
-        }
-        catch (FileNotFoundException e){
-            System.out.println("File non trovato: " + e.getMessage());
+    public boolean caricaListaRisorse(String pathLista) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(pathLista))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // Gestione spazi e separatore
+                String[] parts = line.trim().split("\\s*,\\s*");
+                if (parts.length == 2) {
+                    this.aggiungiRisorsa(parts[0].trim(), parts[1].trim());
+                } else {
+                    logger.warning("Formato non valido nella riga: " + line);
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            logger.severe("Errore durante il caricamento delle risorse: " + e.getMessage());
             return false;
         }
-        catch (IOException e){
-            logger.severe("Errore di I/O: " + e.getMessage());
-            return false;
-        }
-        catch (Exception e){
-            logger.severe("Errore: " + e.getMessage());
-            return false;
-        }   
-
-        return true;
     }
     
     public void ascoltoPorta() { //Metodo per l'ascolto della porta, continuamente runnato in un thread separato, genera dei thread per ogni accept così che più peer possano connettersi
@@ -266,27 +253,50 @@ public class Peer {
     }
  
     public void DownLoad(Triplet richiesta) {
-        while (true) {
-            String risposta = this.queryMaster(richiesta);
-            String[] parti = risposta.split(",");
-            
-            if (parti[0].equals("FALLIMENTO")) {
-                System.out.println("Risorsa non disponibile");
-                return;
-            }
+        int tentativi = 0;
+        final int MAX_TENTATIVI = 3;
+        
+        while (tentativi < MAX_TENTATIVI) {
+            try {
+                String risposta = this.queryMaster(richiesta);
+                String[] parti = risposta.split(",");
+                
+                if (parti[0].equals("FALLIMENTO")) {
+                    System.out.println("Risorsa non disponibile sulla rete");
+                    return;
+                }
 
-            richiesta.setPeer(new Tuple(parti[1], Integer.parseInt(parti[2])));
-            String path = this.richiestaPeer(richiesta);
-            
-            if (path.equals("NONDISPONIBILE")) {
-                // Notifica al master di rimuovere questo peer dalla lista
-                notifyMasterPeerUnavailable(richiesta.getRisorsa(), richiesta.getPeer());
-                continue;
+                if (parti.length < 3) {
+                    logger.severe("Risposta dal master non valida: " + risposta);
+                    return;
+                }
+
+                Tuple peer = new Tuple(parti[1], Integer.parseInt(parti[2]));
+                richiesta.setPeer(peer);
+                System.out.println("Tentativo di download da: " + peer.getIP() + ":" + peer.getPort());
+                
+                String path = this.richiestaPeer(richiesta);
+                
+                if (path.equals("NONDISPONIBILE")) {
+                    System.out.println("Peer non disponibile, richiedo un altro peer al master...");
+                    notifyMasterPeerUnavailable(richiesta.getRisorsa(), peer);
+                    tentativi++;
+                    continue;
+                }
+                
+                this.aggiungiRisorsa(richiesta.getRisorsa(), path);
+                System.out.println("Download completato con successo");
+                return;
+                
+            } catch (Exception e) {
+                logger.severe("Errore durante il download: " + e.getMessage());
+                tentativi++;
+                if (tentativi >= MAX_TENTATIVI) {
+                    System.err.println("Numero massimo di tentativi raggiunto");
+                    return;
+                }
+                System.out.println("Riprovo con un altro peer...");
             }
-            
-            // Download completato con successo
-            this.aggiungiRisorsa(richiesta.getRisorsa(), path);
-            return;
         }
     }
 
@@ -306,8 +316,12 @@ public class Peer {
              PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
              BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
 
-            writer.println("QUERY," + richiesta.toString());
+            writer.println("QUERY," + richiesta.getRisorsa());
             String risposta = reader.readLine();
+
+            if (risposta == null) {
+                return "FALLIMENTO";
+            }
 
             return risposta;
         } catch (IOException e) {
@@ -393,18 +407,19 @@ public class Peer {
             // Attendi la risposta
             String risposta = reader.readLine();
             if (risposta == null) {
-                logger.severe("Nessuna risposta ricevuta dal master durante la registrazione");
-                return;
+                throw new IOException("Nessuna risposta ricevuta dal master");
             }
             
             if (!risposta.equals("SUCCESSO")) {
-                logger.severe("Errore durante la registrazione al master: " + risposta);
-            } else {
-                System.out.println("Registrazione al master completata con successo");
+                throw new IOException("Errore durante la registrazione: " + risposta);
             }
             
+            System.out.println("Registrazione al master completata con successo");
+            
         } catch (IOException e) {
-            logger.severe("Errore durante la registrazione al master: " + e.getMessage());
+            System.err.println("Errore di connessione al master: " + e.getMessage());
+            System.err.println("Impossibile connettersi al master all'indirizzo " + IPMaster + ":" + PortMaster);
+            System.exit(1);
         }
     }
 
@@ -448,29 +463,23 @@ public class Peer {
     //For hashmap che va da Stringa: NomeRisorsa a Stringa: PathRisorsa
 
     private void notifyMasterResourceChange(String resourceName, boolean isAdded) {
-    
-        String[] listaRisorse = this.getNomiRisorse().toArray(new String[0]);
-    
-    
         try (Socket socket = new Socket(IPMaster, PortMaster);
              PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
             
+            writer.println("MODIFICA_PEER," + IP + "," + Port);
             
-            writer.println("MODIFICA_PEER, " + IP + "," + Port);
-
-            for (String risorsa : listaRisorse) {
+            // Invia tutte le risorse attuali
+            for (String risorsa : resourceManager.listResources()) {
                 writer.println(risorsa);
             }
-            writer.println("FINE"); 
-
-
-
-
+            writer.println("FINE");
+            
+            System.out.println("Notificato al master l'aggiornamento delle risorse");
+            
         } catch (IOException e) {
             logger.severe("Errore nella notifica al master: " + e.getMessage());
         }
     }
-    
     private void notifyMasterDisconnection() {
         try (Socket socket = new Socket(IPMaster, PortMaster);
              PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
@@ -489,8 +498,16 @@ public class Peer {
             
             writer.println("LISTDATA");
             String response;
+            boolean hasResources = false;
+            
+            System.out.println("Risorse remote:");
             while ((response = reader.readLine()) != null) {
-                System.out.println(response);
+                hasResources = true;
+                System.out.println("- " + response);
+            }
+            
+            if (!hasResources) {
+                System.out.println("Nessuna risorsa remota disponibile");
             }
             
         } catch (IOException e) {
@@ -499,13 +516,20 @@ public class Peer {
     }
     
     private void downloadResource(String name) {
+        System.out.println("Richiesta download della risorsa: " + name);
         Triplet request = new Triplet(name, null);
         DownLoad(request);
     }
 
     private void listLocalResources() {
+        Set<String> risorse = resourceManager.listResources();
+        if (risorse.isEmpty()) {
+            System.out.println("Nessuna risorsa locale disponibile");
+            return;
+        }
+        
         System.out.println("Risorse locali:");
-        for (String resource : resourceManager.listResources()) {
+        for (String resource : risorse) {
             System.out.println("- " + resource);
         }
     }
@@ -513,12 +537,17 @@ public class Peer {
 
     private void addResource(String name, String content) {
         if (resourceManager.addResource(name, content)) {
+            System.out.println("Risorsa aggiunta: " + name);
             notifyMasterResourceChange(name, true);
+        } else {
+            System.err.println("Errore durante l'aggiunta della risorsa");
         }
     }
 
     private void quit() {
+        System.out.println("Disconnessione dalla rete...");
         notifyMasterDisconnection();
         running = false;
+        System.out.println("Disconnesso con successo");
     }
 }

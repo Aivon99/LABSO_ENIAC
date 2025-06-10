@@ -113,9 +113,9 @@ public class Master {
             return;
         }
 
-        System.out.println("Peers e relative risorse:");
+        System.out.println("Peers:");
         for (Tuple peer : hashPeer.keySet()) {
-            System.out.println("Peer " + peer.getIP() + ":" + peer.getPort());
+            System.out.println(peer.getIP() + ":" + peer.getPort() + ":");
             List<String> risorse = hashPeer.get(peer);
             for (String r : risorse) {
                 System.out.println("  - " + r);
@@ -171,28 +171,33 @@ public class Master {
             logger.severe("Errore nella gestione del client: " + e.getMessage());
         }
     }
-    private void modificaRisorsePeer(PrintWriter writer, BufferedReader reader, Tuple nodo){
-        //Fase lettura messaggi in arrivo
-        String linea;
-        List<String> nuoveRisorse = new ArrayList<>();
-        
-        try{ while((linea = reader.readLine()) != null ){
+    private void modificaRisorsePeer(PrintWriter writer, BufferedReader reader, Tuple nodo) {
+        try {
+            List<String> nuoveRisorse = new ArrayList<>();
+            String linea;
             
-            if (linea.equals("FINE")) {
-                break; 
-            } 
-            nuoveRisorse.add(linea);
-            //writer.println("SUCCESSO");
-
-        } 
-        modificaPeer(nodo, nuoveRisorse);
-    }
-        catch(IOException e) {
+            while ((linea = reader.readLine()) != null) {
+                if (linea.equals("FINE")) {
+                    break;
+                }
+                nuoveRisorse.add(linea.trim());
+            }
+            
+            synchronized (tableLock) {
+                // Rimuovi il peer esistente
+                rimuoviPeer(nodo);
+                // Aggiungi il peer con le nuove risorse
+                addPeer(nodo.getIP(), nodo.getPort(), nuoveRisorse);
+            }
+            
+            writer.println("SUCCESSO");
+            System.out.println("Aggiornate risorse per il peer " + nodo.getIP() + ":" + nodo.getPort());
+            System.out.println("Nuove risorse: " + String.join(", ", nuoveRisorse));
+            
+        } catch (IOException e) {
             logger.severe("Errore nella modifica delle risorse del peer: " + e.getMessage());
             writer.println("ERRORE: " + e.getMessage());
-
         }
-
     }
     private void handleRegister(String[] parti, PrintWriter writer) {
         try {
@@ -212,7 +217,10 @@ public class Master {
             System.out.println("Registrazione nuovo peer: " + IP + ":" + Port);
             System.out.println("Risorse: " + String.join(", ", risorse));
             
-            addPeer(IP, Port, risorse);
+            synchronized (tableLock) {
+                addPeer(IP, Port, risorse);
+            }
+            
             writer.println("SUCCESSO");
             System.out.println("Registrazione completata con successo");
             
@@ -256,11 +264,14 @@ public class Master {
     }
 
     private void handleQuit(String[] parti, PrintWriter writer) {
-        String IP = parti[1];
-        int Port = Integer.parseInt(parti[2]);
-        Tuple peer = new Tuple(IP, Port);
-        rimuoviPeer(peer);
-        writer.println("SUCCESSO");
+        System.out.println("Arresto del master...");
+        running = false;
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            logger.severe("Errore durante la chiusura del server: " + e.getMessage());
+        }
+        System.out.println("Master arrestato con successo");
     }
 
     private void handleRemovePeer(String[] parti, PrintWriter writer) {
@@ -283,13 +294,21 @@ public class Master {
 
     public void startInteractiveSession() {
         new Thread(this::handleUserInput).start();
+        System.out.println("Master avviato sulla porta " + serverSocket.getLocalPort());
+        System.out.println("Comandi disponibili:");
+        System.out.println("- listdata: mostra tutte le risorse disponibili");
+        System.out.println("- inspectNodes: mostra dettagli di tutti i peer");
+        System.out.println("- log: mostra lo storico dei download");
+        System.out.println("- quit: arresta il master");
     }
 
     private void handleUserInput() {
         while (running) {
             System.out.print("> ");
-            String command = scanner.nextLine();
-            processCommand(command);
+            String command = scanner.nextLine().trim();
+            if (!command.isEmpty()) {
+                processCommand(command);
+            }
         }
     }
 
@@ -318,10 +337,9 @@ public class Master {
             System.out.println("Risorse disponibili:");
             for (Map.Entry<String, List<Tuple>> entry : hashRisorse.entrySet()) {
                 System.out.print(entry.getKey() + ": ");
-                for (Tuple peer : entry.getValue()) {
-                    System.out.print(peer.getIP() + ":" + peer.getPort() + " ");
-                }
-                System.out.println();
+                System.out.println(entry.getValue().stream()
+                    .map(t -> t.getIP() + ":" + t.getPort())
+                    .collect(Collectors.joining(", ")));
             }
         }
     }
@@ -336,12 +354,14 @@ public class Master {
     }
 
     private void quit() {
+        System.out.println("Arresto del master...");
         running = false;
         try {
             serverSocket.close();
         } catch (IOException e) {
             logger.severe("Errore durante la chiusura del server: " + e.getMessage());
         }
+        System.out.println("Master arrestato con successo");
     }
 }
     

@@ -15,10 +15,18 @@ public class ResourceManager {
         this.resourceDir = resourceDir;
         this.resources = new ConcurrentHashMap<>();
         createResourceDir();
+        createReceivedDir();
     }
 
     private void createResourceDir() {
         File dir = new File(resourceDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+    }
+
+    private void createReceivedDir() {
+        File dir = new File("received");
         if (!dir.exists()) {
             dir.mkdirs();
         }
