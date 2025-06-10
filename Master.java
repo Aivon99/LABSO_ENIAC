@@ -45,7 +45,7 @@ public class Master {
             hashPeer.put(peer, risorse);
 
             for (String risorsa : risorse) {
-                hashRisorse.computeIfAbsent(risorsa, _ -> new ArrayList<>()).add(peer);
+                hashRisorse.computeIfAbsent(risorsa, ignora -> new ArrayList<>()).add(peer);
             }
         }
     }
@@ -158,6 +158,11 @@ public class Master {
                 case "QUIT":
                     handleQuit(parti, writer);
                     break;
+                case "MODIFICA_PEER": 
+                    Tuple nodo = new Tuple(parti[1], Integer.parseInt(parti[2]));
+                    modificaRisorsePeer(writer, reader, nodo);
+                    
+                    break;
                 case "REMOVE_PEER":
                     handleRemovePeer(parti, writer);
                     break;
@@ -166,7 +171,29 @@ public class Master {
             logger.severe("Errore nella gestione del client: " + e.getMessage());
         }
     }
+    private void modificaRisorsePeer(PrintWriter writer, BufferedReader reader, Tuple nodo){
+        //Fase lettura messaggi in arrivo
+        String linea;
+        List<String> nuoveRisorse = new ArrayList<>();
+        
+        try{ while((linea = reader.readLine()) != null ){
+            
+            if (linea.equals("FINE")) {
+                break; 
+            } 
+            nuoveRisorse.add(linea);
+            //writer.println("SUCCESSO");
 
+        } 
+        modificaPeer(nodo, nuoveRisorse);
+    }
+        catch(IOException e) {
+            logger.severe("Errore nella modifica delle risorse del peer: " + e.getMessage());
+            writer.println("ERRORE: " + e.getMessage());
+
+        }
+
+    }
     private void handleRegister(String[] parti, PrintWriter writer) {
         try {
             System.out.println("Ricevuta richiesta di registrazione: " + String.join(",", parti));
@@ -213,7 +240,7 @@ public class Master {
         int toPort = Integer.parseInt(parti[5]);
 
         LogEntry entry = new LogEntry(risorsa, fromIP + ":" + fromPort, toIP + ":" + toPort, true);
-        downloadLogs.computeIfAbsent(risorsa, _ -> new ArrayList<>()).add(entry);
+        downloadLogs.computeIfAbsent(risorsa, ignora -> new ArrayList<>()).add(entry);
         writer.println("SUCCESSO");
     }
 

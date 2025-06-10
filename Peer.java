@@ -247,7 +247,7 @@ public class Peer {
                 } catch (IOException e) {
                     logger.severe("Errore durante l'invio della risposta: " + e.getMessage());
                 }
-                
+
                 return;
             }
 
@@ -445,14 +445,27 @@ public class Peer {
                 break;
         }
     }
+    //For hashmap che va da Stringa: NomeRisorsa a Stringa: PathRisorsa
 
     private void notifyMasterResourceChange(String resourceName, boolean isAdded) {
+    
+        String[] listaRisorse = this.getNomiRisorse().toArray(new String[0]);
+    
+    
         try (Socket socket = new Socket(IPMaster, PortMaster);
              PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
             
-            String command = isAdded ? "ADD" : "REMOVE";
-            writer.println(command + "," + resourceName + "," + IP + "," + Port);
             
+            writer.println("MODIFICA_PEER, " + IP + "," + Port);
+
+            for (String risorsa : listaRisorse) {
+                writer.println(risorsa);
+            }
+            writer.println("FINE"); 
+
+
+
+
         } catch (IOException e) {
             logger.severe("Errore nella notifica al master: " + e.getMessage());
         }
@@ -503,7 +516,6 @@ public class Peer {
             notifyMasterResourceChange(name, true);
         }
     }
-
 
     private void quit() {
         notifyMasterDisconnection();
