@@ -55,3 +55,6 @@ Nel master, puoi usare:
 listdata          # Mostra tutte le risorse disponibili
 > inspectNodes      # Mostra i dettagli di ogni peer
 > log              # Mostra il log dei download
+
+listpeers
+per poter vedere la lista dei peers
