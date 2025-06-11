@@ -308,6 +308,7 @@ public class Master {
         synchronized (tableLock) {
             for (Tuple peer : hashPeer.keySet()) {
                 writer.println(peer.getIP() + ":" + peer.getPort());
+
             }
         }
     }
