@@ -6,10 +6,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
+import java.util.Objects;
 
 public class ResourceManager {
     private final String resourceDir;
     private final Map<String, String> resources; // nome -> path
+    private static final Logger logger = Logger.getLogger(ResourceManager.class.getName());
 
     public ResourceManager(String resourceDir) {
         this.resourceDir = resourceDir;
@@ -37,15 +40,18 @@ public class ResourceManager {
             File file = new File(resourceDir, name);
             Files.write(file.toPath(), content.getBytes());
             resources.put(name, file.getAbsolutePath());
+            logger.info("Risorsa aggiunta: " + name + " con percorso: " + file.getAbsolutePath());
             return true;
         } catch (IOException e) {
+            logger.severe("Errore durante l'aggiunta della risorsa: " + e.getMessage());
             return false;
         }
     }
 
     public String getResource(String name) {
         String path = resources.get(name);
-        if (path == null) return null;
+        if (path == null)
+            return null;
         try {
             return new String(Files.readAllBytes(Paths.get(path)));
         } catch (IOException e) {
@@ -55,5 +61,18 @@ public class ResourceManager {
 
     public Set<String> listResources() {
         return new HashSet<>(resources.keySet());
+    }
+
+    public void reload() {
+        File dir = new File(this.resourceDir);
+        if (dir.exists() && dir.isDirectory()) {
+            for (File file : Objects.requireNonNull(dir.listFiles())) {
+                this.resources.put(file.getName(), file.getAbsolutePath());
+            }
+        }
+    }
+
+    public String getResourcePath(String name) {
+        return resources.get(name);
     }
 }

@@ -22,13 +22,13 @@ public class PeerListener implements Runnable {
     @Override
     public void run() {
         ExecutorService threadPool = Executors.newFixedThreadPool(10);
-        
+
         while (true) {
             try {
                 Socket clientSocket = serverSocket.accept();
                 String clientId = clientSocket.getInetAddress().getHostAddress() + ":" + clientSocket.getPort();
                 System.out.println("Nuova connessione da: " + clientId);
-                
+
                 activeConnections.putIfAbsent(clientId, new Semaphore(1));
                 threadPool.execute(new PeerHandler(clientSocket, activeConnections.get(clientId), resourceManager));
 
@@ -55,24 +55,25 @@ class PeerHandler implements Runnable {
     public void run() {
         try {
             connectionSemaphore.acquire();
-            
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
 
-                String inputLine;
-                while ((inputLine = in.readLine()) != null) {
-                    System.out.println("Ricevuto: " + inputLine);
-                    
-                    if (inputLine.equals("ping")) {
-                        System.out.println("Server ha risposto: pong");
-                        out.println("pong");
-                    } else if (inputLine.startsWith("UPLOAD")) {
-                        handleUpload(inputLine, out);
-                    } else if (inputLine.startsWith("DOWNLOAD")) {
-                        handleDownload(inputLine, out);
-                    }
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+
+            String inputLine = in.readLine();
+            if (inputLine != null) {
+                System.out.println("Ricevuto: " + inputLine);
+
+                if (inputLine.equals("ping")) {
+                    writer.write("pong\n");
+                    writer.flush();
+                    System.out.println("Server ha risposto: pong");
+                } else if (inputLine.startsWith("UPLOAD")) {
+                    handleUpload(inputLine, writer);
+                } else if (inputLine.startsWith("DOWNLOAD")) {
+                    handleDownload(inputLine, writer);
                 }
             }
+
         } catch (IOException | InterruptedException e) {
             logger.severe("Errore nella gestione del peer: " + e.getMessage());
         } finally {
@@ -85,45 +86,65 @@ class PeerHandler implements Runnable {
         }
     }
 
-    private void handleUpload(String command, PrintWriter out) {
+    private void handleUpload(String command, BufferedWriter writer) {
         String[] parts = command.split(",");
         if (parts.length < 2) {
-            out.println("ERRORE: Formato comando non valido");
+            sendLine(writer, "ERRORE: Formato comando non valido");
+            logger.severe("Formato comando non valido ricevuto: " + command);
             return;
         }
 
         String resourceName = parts[1];
+        logger.info("Richiesta di upload per la risorsa: " + resourceName);
+
         String resourcePath = resourceManager.getResource(resourceName);
-        
+
         if (resourcePath == null) {
-            out.println("NONDISPONIBILE");
+            sendLine(writer, "NONDISPONIBILE");
+            logger.info("Risorsa non disponibile: " + resourceName);
             return;
         }
 
-        out.println("SUCCESSO");
         try {
-            Files.copy(Paths.get(resourcePath), socket.getOutputStream());
+            sendLine(writer, "SUCCESSO");
+            logger.info("Messaggio SUCCESSO inviato per: " + resourceName);
+
+            OutputStream outRaw = socket.getOutputStream();
+            logger.info("OutputStream ottenuto. Inizio copia del file: " + resourcePath);
+            Files.copy(Paths.get(resourcePath), outRaw);
+            outRaw.flush();
+            logger.info("Trasferimento completato per la risorsa: " + resourceName);
+
         } catch (IOException e) {
-            logger.severe("Errore durante l'upload: " + e.getMessage());
+            logger.severe("Errore durante l'upload di " + resourceName + ": " + e.getMessage());
         }
     }
 
-    private void handleDownload(String command, PrintWriter out) {
+    private void sendLine(BufferedWriter writer, String message) {
+        try {
+            writer.write(message + "\n");
+            writer.flush();
+        } catch (IOException e) {
+            logger.severe("Errore durante l'invio della risposta: " + e.getMessage());
+        }
+    }
+
+    private void handleDownload(String command, BufferedWriter writer) {
         String[] parts = command.split(",");
         if (parts.length < 2) {
-            out.println("ERRORE: Formato comando non valido");
+            sendLine(writer, "ERRORE: Formato comando non valido");
             return;
         }
 
         String resourceName = parts[1];
         String content = resourceManager.getResource(resourceName);
-        
+
         if (content == null) {
-            out.println("NONDISPONIBILE");
+            sendLine(writer, "NONDISPONIBILE");
             return;
         }
 
-        out.println("SUCCESSO");
-        out.println(content);
+        sendLine(writer, "SUCCESSO");
+        sendLine(writer, content);
     }
 }

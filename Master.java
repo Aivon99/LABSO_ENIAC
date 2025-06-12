@@ -42,12 +42,14 @@ public class Master {
 
     public void addPeer(String IP, int Port, List<String> risorse) {
         synchronized (tableLock) {
+            logger.info("Acquisito lock per l'accesso a hashRisorse e hashPeer");
             Tuple peer = new Tuple(IP, Port);
             hashPeer.put(peer, risorse);
 
             for (String risorsa : risorse) {
                 hashRisorse.computeIfAbsent(risorsa, ignora -> new ArrayList<>()).add(peer);
             }
+            logger.info("Rilasciato lock per hashRisorse e hashPeer");
         }
     }
 
@@ -132,14 +134,19 @@ public class Master {
     public void ascoltaPorta() {
         ExecutorService threadPool = Executors.newCachedThreadPool(); // or fixed thread pool
 
-        while (true) {
+        while (running) {
             try {
                 Socket clientSocket = serverSocket.accept(); // blocks until a peer connects
                 threadPool.execute(() -> handleClient(clientSocket));
             } catch (IOException e) {
+                if (!running) {
+                    // If the server is not running, break the loop
+                    break;
+                }
                 System.err.println("Error accepting connection: " + e.getMessage());
             }
         }
+        threadPool.shutdown();
     }
 
     private void handleClient(Socket socket) {
@@ -195,10 +202,12 @@ public class Master {
             }
 
             synchronized (tableLock) {
+                logger.info("Acquisito lock per l'accesso a hashRisorse e hashPeer");
                 // Rimuovi il peer esistente
                 rimuoviPeer(nodo);
                 // Aggiungi il peer con le nuove risorse
                 addPeer(nodo.getIP(), nodo.getPort(), nuoveRisorse);
+                logger.info("Rilasciato lock per hashRisorse e hashPeer");
             }
 
             writer.println("SUCCESSO");
