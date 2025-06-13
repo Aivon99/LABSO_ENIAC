@@ -224,7 +224,7 @@ public class Master {
         try {
             System.out.println("Ricevuta richiesta di registrazione: " + String.join(",", parti));
 
-            if (parti.length < 4) {
+            if (parti.length < 3) {
                 System.out.println("ERRORE: Formato comando non valido. Parti ricevute: " + parti.length);
                 writer.println("ERRORE: Formato comando non valido");
                 return;
@@ -232,8 +232,11 @@ public class Master {
 
             String IP = parti[1];
             int Port = Integer.parseInt(parti[2]);
-            String[] risorseArray = parti[3].split(";");
-            List<String> risorse = Arrays.asList(risorseArray);
+
+            List<String> risorse = new ArrayList<>();
+            if (parti.length >= 4 && !parti[3].isEmpty()) {
+                risorse = Arrays.asList(parti[3].split(";"));
+            }
 
             System.out.println("Registrazione nuovo peer: " + IP + ":" + Port);
             System.out.println("Risorse: " + String.join(", ", risorse));
@@ -253,10 +256,18 @@ public class Master {
 
     private void handleQuery(String[] parti, PrintWriter writer) {
         String risorsa = parti[1];
-        Tuple peer = getPeerRisorsa(risorsa);
-        if (peer != null) {
-            writer.println("SUCCESSO," + peer.getIP() + "," + peer.getPort());
-        } else {
+        synchronized (tableLock) {
+            if (hashRisorse.containsKey(risorsa)) {
+                List<Tuple> peerList = hashRisorse.get(risorsa);
+                if (!peerList.isEmpty()) {
+                    String response = "SUCCESSO";
+                    for (Tuple peer : peerList) {
+                        response += "," + peer.getIP() + "," + peer.getPort();
+                    }
+                    writer.println(response);
+                    return;
+                }
+            }
             writer.println("FALLIMENTO");
         }
     }

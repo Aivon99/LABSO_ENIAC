@@ -29,6 +29,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 
+import java.util.List;
+import java.util.ArrayList;
+
 public class Peer {
     private HashMap<String, String> hashRisorse;
 
@@ -268,25 +271,42 @@ public class Peer {
                     return;
                 }
 
-                if (parti.length < 3) {
-                    logger.severe("Risposta dal master non valida: " + risposta);
+                // Verifica se ci sono altri peer oltre a noi stessi
+                List<Tuple> availablePeers = new ArrayList<>();
+                for (int i = 1; i < parti.length; i += 2) {
+                    String peerIP = parti[i];
+                    int peerPort = Integer.parseInt(parti[i + 1]);
+                    Tuple peer = new Tuple(peerIP, peerPort);
+                    // Aggiungi il peer solo se non siamo noi stessi
+                    if (!(peerIP.equals(this.IP) && peerPort == this.Port)) {
+                        availablePeers.add(peer);
+                    }
+                }
+
+                // Se non ci sono altri peer disponibili oltre a noi stessi
+                if (availablePeers.isEmpty()) {
+                    logger.info("La risorsa e' disponibile solo su questo peer. Download non necessario.");
                     return;
                 }
 
-                Tuple peer = new Tuple(parti[1], Integer.parseInt(parti[2]));
-                richiesta.setPeer(peer);
-                logger.info("Tentativo di download da: " + peer.getIP() + ":" + peer.getPort());
+                // Scegli un peer casuale tra quelli disponibili
+                Tuple selectedPeer = availablePeers.get((int) (Math.random() * availablePeers.size()));
+                richiesta.setPeer(selectedPeer);
+                logger.info("Tentativo di download da: " + selectedPeer.getIP() + ":" + selectedPeer.getPort());
 
                 String path = this.richiestaPeer(richiesta);
 
                 if (path == null || path.equals("NONDISPONIBILE")) {
                     logger.warning("Peer non disponibile o errore nel download, richiedo un altro peer al master...");
-                    notifyMasterPeerUnavailable(richiesta.getRisorsa(), peer);
+                    notifyMasterPeerUnavailable(richiesta.getRisorsa(), selectedPeer);
                     tentativi++;
                     continue;
                 }
 
+                String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+                resourceManager.addResource(richiesta.getRisorsa(), content);
                 this.aggiungiRisorsa(richiesta.getRisorsa(), path);
+                notifyMasterResourceChange(richiesta.getRisorsa(), true);
                 logger.info("Download completato con successo per la risorsa: " + richiesta.getRisorsa());
                 return;
 
@@ -363,7 +383,33 @@ public class Peer {
                 return null;
             }
 
-            File outputFile = new File("received/" + richiesta.getRisorsa());
+            File receivedDir = new File("received/" + this.Port);
+            if (!receivedDir.exists()) {
+                receivedDir.mkdirs();
+            }
+            String originalName = richiesta.getRisorsa();
+            File outputFile = new File(receivedDir, originalName);
+
+            int count = 1;
+            while (outputFile.exists()) {
+                String name = originalName;
+                String baseName, extension;
+
+                int dotIndex = name.lastIndexOf(".");
+                if (dotIndex != -1) {
+                    baseName = name.substring(0, dotIndex);
+                    extension = name.substring(dotIndex);
+                } else {
+                    baseName = name;
+                    extension = "";
+                }
+
+                String newName = baseName + "-dl" + (count > 1 ? "(" + count + ")" : "") + extension;
+                outputFile = new File(receivedDir, newName);
+                count++;
+
+            }
+            richiesta.setRisorsa(outputFile.getName());
 
             try (FileOutputStream fileOut = new FileOutputStream(outputFile)) {
                 byte[] buffer = new byte[4096];
@@ -391,11 +437,7 @@ public class Peer {
 
             // Costruisci la lista delle risorse come stringa separata da punto e virgola
             Set<String> risorse = resourceManager.listResources();
-            if (risorse.isEmpty()) {
-                // Se non ci sono risorse, aggiungiamo una risorsa di default per test
-                resourceManager.addResource("test.txt", "Contenuto di test");
-                risorse = resourceManager.listResources();
-            }
+
             String risorseStr = String.join(";", risorse);
 
             // Debug: stampa il comando di registrazione
@@ -462,9 +504,39 @@ public class Peer {
             case "listpeers":
                 requestPeerListFromMaster();
                 break;
+            case "read":
+                if (parts.length >= 2) {
+                    readFile(parts[1]);
+                } else {
+                    System.out.println("Uso corretto: read <nome_file>");
+                }
+                break;
+
         }
     }
     // For hashmap che va da Stringa: NomeRisorsa a Stringa: PathRisorsa
+
+    private void readFile(String fileName) {
+        String path = hashRisorse.get(fileName);
+        if (path == null) {
+            System.out.println("Il file '" + fileName + "' non e' presente tra le risorse locali.");
+            return;
+        }
+
+        File file = new File(path);
+        if (!file.exists()) {
+            System.out.println("Il file '" + fileName + "' non esiste fisicamente nel percorso: " + path);
+            return;
+        }
+
+        try {
+            String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            System.out.println("Contenuto di " + fileName + ":");
+            System.out.println(content);
+        } catch (IOException e) {
+            System.out.println("Errore nella lettura del file: " + e.getMessage());
+        }
+    }
 
     private void notifyMasterResourceChange(String resourceName, boolean isAdded) {
         try (Socket socket = new Socket(IPMaster, PortMaster);
@@ -540,6 +612,11 @@ public class Peer {
     }
 
     private void addResource(String name, String content) {
+        if (hashRisorse.containsKey(name)) {
+            System.out.println("Errore: Possiedi una risorsa uguale chiamata '" + name + "'.");
+            return;
+        }
+
         if (resourceManager.addResource(name, content)) {
             this.aggiungiRisorsa(name, resourceManager.getResourcePath(name));
             System.out.println("Risorsa aggiunta: " + name);
