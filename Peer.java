@@ -1,6 +1,7 @@
-
-//TODO DA ORDINARE E SEPARARE PER TIPO
 import java.util.logging.Logger;
+import java.util.logging.Level;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -13,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.net.ServerSocket;
@@ -31,9 +33,10 @@ import java.io.PrintWriter;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Peer {
-    private HashMap<String, String> hashRisorse;
+    private ConcurrentHashMap<String, String> hashRisorse;
 
     private int Port;
     private String IP; // IP del peer
@@ -51,19 +54,22 @@ public class Peer {
 
     private final ResourceManager resourceManager;
     private final Scanner scanner;
-    private boolean running;
+    private Thread inputThread;
+    private Thread uploadThread;
+    private volatile boolean running = true;
+
+    private static final int SOCKET_TIMEOUT = 5000; // 5 secondi di timeout
 
     public Peer(String IP, int Port, String IPMaster, int PortMaster) {
-        this.hashRisorse = new HashMap<>();
+        this.hashRisorse = new ConcurrentHashMap<>();
         this.IPMaster = IPMaster;
         this.PortMaster = PortMaster;
         this.IP = IP;
         this.Port = Port;
         this.codaUpload = new LinkedBlockingQueue<>();
         this.uploadSignal = new Semaphore(0);
-        this.resourceManager = new ResourceManager("resources/" + Port);
+        this.resourceManager = new ResourceManager("resources/" + Port, String.valueOf(Port));
         this.scanner = new Scanner(System.in);
-        this.running = true;
 
         try {
             this.serverSocket = new ServerSocket(Port);
@@ -303,11 +309,44 @@ public class Peer {
                     continue;
                 }
 
-                String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
-                resourceManager.addResource(richiesta.getRisorsa(), content);
-                this.aggiungiRisorsa(richiesta.getRisorsa(), path);
-                notifyMasterResourceChange(richiesta.getRisorsa(), true);
-                logger.info("Download completato con successo per la risorsa: " + richiesta.getRisorsa());
+                // Ottieni il nome del file scaricato dal percorso
+                File downloadedFile = new File(path);
+                String downloadedFileName = downloadedFile.getName();
+                
+                // Copia il file nella cartella resources
+                File resourcesDir = new File("resources/" + this.Port);
+                if (!resourcesDir.exists()) {
+                    resourcesDir.mkdirs();
+                }
+                File resourcesFile = new File(resourcesDir, downloadedFileName);
+                Files.copy(downloadedFile.toPath(), resourcesFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                
+                // Aggiungi la risorsa con il nome del file scaricato
+                this.aggiungiRisorsa(downloadedFileName, resourcesFile.getAbsolutePath());
+                
+                // Notifica al master solo il file scaricato
+                notifyMasterResourceChange(downloadedFileName, true);
+                
+                // Notifica al master il download completato
+                try (Socket socket = new Socket(IPMaster, PortMaster)) {
+                    socket.setSoTimeout(SOCKET_TIMEOUT);
+                    PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+                    String command = String.format("DOWNLOAD,%s,%s,%d,%s,%d", 
+                        richiesta.getRisorsa(), 
+                        selectedPeer.getIP(), 
+                        selectedPeer.getPort(),
+                        this.IP,
+                        this.Port);
+                    writer.println(command);
+                    logger.info("Notificato al master il download completato di " + richiesta.getRisorsa());
+                } catch (IOException e) {
+                    logger.severe("Errore durante la notifica del download al master: " + e.getMessage());
+                }
+                
+                logger.info("Download completato con successo per la risorsa: " + downloadedFileName);
+                
+                // Ricarica le risorse dal ResourceManager
+                resourceManager.reload();
                 return;
 
             } catch (Exception e) {
@@ -334,9 +373,10 @@ public class Peer {
     }
 
     public String queryMaster(Triplet richiesta) {
-        try (Socket socket = new Socket(IPMaster, PortMaster);
-                PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+        try (Socket socket = new Socket(IPMaster, PortMaster)) {
+            socket.setSoTimeout(SOCKET_TIMEOUT);
+            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             writer.println("QUERY," + richiesta.getRisorsa());
             String risposta = reader.readLine();
@@ -353,14 +393,11 @@ public class Peer {
     }
 
     public String richiestaPeer(Triplet richiesta) {
-        try (
-                Socket socket = new Socket(richiesta.getPeer().getIP(), richiesta.getPeer().getPort());
-                PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
-
-                BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
-                ByteArrayOutputStream headerBuf = new ByteArrayOutputStream();
-
-        ) {
+        try (Socket socket = new Socket(richiesta.getPeer().getIP(), richiesta.getPeer().getPort())) {
+            socket.setSoTimeout(SOCKET_TIMEOUT);
+            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
+            ByteArrayOutputStream headerBuf = new ByteArrayOutputStream();
 
             writer.println("UPLOAD," + richiesta.toString());
             logger.info("Richiesta di upload inviata a " + richiesta.getPeer().getIP() + ":"
@@ -369,12 +406,11 @@ public class Peer {
             int b;
             while ((b = bis.read()) != -1) {
                 if (b == '\n')
-                    break; // simple header delimiter
+                    break;
                 headerBuf.write(b);
             }
             String headerRisposta = headerBuf.toString(StandardCharsets.UTF_8).trim();
             logger.info("Risposta ricevuta: " + headerRisposta);
-            System.out.println("DEBUG: risposta ricevuta: " + headerRisposta);
 
             if (headerRisposta.equals("NONDISPONIBILE")) {
                 return "NONDISPONIBILE";
@@ -388,28 +424,28 @@ public class Peer {
                 receivedDir.mkdirs();
             }
             String originalName = richiesta.getRisorsa();
-            File outputFile = new File(receivedDir, originalName);
+            String baseName, extension;
 
+            int dotIndex = originalName.lastIndexOf(".");
+            if (dotIndex != -1) {
+                baseName = originalName.substring(0, dotIndex);
+                extension = originalName.substring(dotIndex);
+            } else {
+                baseName = originalName;
+                extension = "";
+            }
+
+            // Crea il nome del file con suffisso -dl
+            String newName = baseName + "-dl" + extension;
+            File outputFile = new File(receivedDir, newName);
+
+            // Se il file esiste già, aggiungi un numero
             int count = 1;
             while (outputFile.exists()) {
-                String name = originalName;
-                String baseName, extension;
-
-                int dotIndex = name.lastIndexOf(".");
-                if (dotIndex != -1) {
-                    baseName = name.substring(0, dotIndex);
-                    extension = name.substring(dotIndex);
-                } else {
-                    baseName = name;
-                    extension = "";
-                }
-
-                String newName = baseName + "-dl" + (count > 1 ? "(" + count + ")" : "") + extension;
+                newName = baseName + "-dl(" + count + ")" + extension;
                 outputFile = new File(receivedDir, newName);
                 count++;
-
             }
-            richiesta.setRisorsa(outputFile.getName());
 
             try (FileOutputStream fileOut = new FileOutputStream(outputFile)) {
                 byte[] buffer = new byte[4096];
@@ -418,7 +454,7 @@ public class Peer {
                     fileOut.write(buffer, 0, bytesRead);
                 }
             } catch (IOException e) {
-                logger.severe("ERRORE durante la scrittura/ricezione del file: " + richiesta.getRisorsa() + "\n"
+                logger.severe("ERRORE durante la scrittura/ricezione del file: " + newName + "\n"
                         + e.getMessage());
                 return null;
             }
@@ -479,7 +515,7 @@ public class Peer {
     }
 
     private void processCommand(String command) {
-        String[] parts = command.split(" ");
+        String[] parts = command.split(" ", 3); // Dividi in massimo 3 parti
         switch (parts[0]) {
             case "listdata":
                 if (parts.length > 1 && parts[1].equals("local")) {
@@ -490,7 +526,9 @@ public class Peer {
                 break;
             case "add":
                 if (parts.length >= 3) {
-                    addResource(parts[1], parts[2]);
+                    addResource(parts[1], parts[2]); // parts[2] contiene tutto il resto della stringa
+                } else {
+                    System.out.println("Uso corretto: add <nome_file> <contenuto>");
                 }
                 break;
             case "download":
@@ -511,7 +549,6 @@ public class Peer {
                     System.out.println("Uso corretto: read <nome_file>");
                 }
                 break;
-
         }
     }
     // For hashmap che va da Stringa: NomeRisorsa a Stringa: PathRisorsa
@@ -538,33 +575,45 @@ public class Peer {
         }
     }
 
-    private void notifyMasterResourceChange(String resourceName, boolean isAdded) {
-        try (Socket socket = new Socket(IPMaster, PortMaster);
-                PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
+    private void notifyMasterResourceChange(String resourceName, boolean isAvailable) {
+        try (Socket socket = new Socket(IPMaster, PortMaster)) {
+            socket.setSoTimeout(SOCKET_TIMEOUT);
+            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-            writer.println("MODIFICA_PEER," + IP + "," + Port);
-
-            // Invia tutte le risorse attuali
-            for (String risorsa : resourceManager.listResources()) {
-                writer.println(risorsa);
+            String command = String.format("RESOURCE_UPDATE,%s,%d,%s,%s", IP, Port, isAvailable ? 1 : 0,
+                    resourceName);
+            writer.println(command);
+            logger.info("Notificato al master l'aggiornamento delle risorse");
+            
+            String response = reader.readLine();
+            if (response != null && response.equals("OK")) {
+                logger.info("Master ha confermato l'aggiornamento della risorsa: " + resourceName);
+            } else {
+                logger.warning("Master non ha confermato l'aggiornamento della risorsa: " + resourceName);
             }
-            writer.println("FINE");
-
-            System.out.println("Notificato al master l'aggiornamento delle risorse");
-
         } catch (IOException e) {
-            logger.severe("Errore nella notifica al master: " + e.getMessage());
+            logger.severe("Errore durante la notifica al master: " + e.getMessage());
         }
     }
 
     private void notifyMasterDisconnection() {
-        try (Socket socket = new Socket(IPMaster, PortMaster);
-                PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
-
-            writer.println("QUIT," + IP + "," + Port);
-
-        } catch (IOException e) {
-            logger.severe("Errore nella notifica di disconnessione al master: " + e.getMessage());
+        try (Socket socket = new Socket(IPMaster, PortMaster)) {
+            socket.setSoTimeout(SOCKET_TIMEOUT);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            String command = "UNREGISTER," + this.IP + "," + this.Port;
+            out.println(command);
+            
+            String response = in.readLine();
+            if (response != null && response.equals("OK")) {
+                logger.info("Disconnessione notificata al master con successo");
+            } else {
+                logger.warning("Errore durante la notifica di disconnessione al master");
+            }
+        } catch (Exception e) {
+            logger.severe("Errore durante la notifica di disconnessione al master: " + e.getMessage());
         }
     }
 
@@ -599,15 +648,22 @@ public class Peer {
     }
 
     private void listLocalResources() {
-        Set<String> risorse = resourceManager.listResources();
-        if (risorse.isEmpty()) {
-            System.out.println("Nessuna risorsa locale disponibile");
-            return;
-        }
-
         System.out.println("Risorse locali:");
-        for (String resource : risorse) {
-            System.out.println("- " + resource);
+        // Ricarica le risorse dal ResourceManager
+        resourceManager.reload();
+        
+        // Ottieni la lista delle risorse dal ResourceManager
+        Set<String> resources = resourceManager.listResources();
+        
+        if (resources.isEmpty()) {
+            System.out.println("Nessuna risorsa disponibile.");
+        } else {
+            for (String resource : resources) {
+                // Verifica se la risorsa appartiene a questo peer
+                if (hashRisorse.containsKey(resource)) {
+                    System.out.println("- " + resource);
+                }
+            }
         }
     }
 
@@ -627,10 +683,31 @@ public class Peer {
     }
 
     private void quit() {
-        System.out.println("Disconnessione dalla rete...");
-        notifyMasterDisconnection();
-        running = false;
-        System.out.println("Disconnesso con successo");
+        try {
+            // Notifica al master la disconnessione
+            notifyMasterDisconnection();
+            
+            // Chiudi il server socket
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+            
+            // Chiudi il thread di gestione input
+            if (inputThread != null) {
+                inputThread.interrupt();
+            }
+            
+            // Chiudi il thread di gestione upload
+            if (uploadThread != null) {
+                uploadThread.interrupt();
+            }
+            
+            logger.info("Peer disconnesso correttamente");
+            System.exit(0);
+        } catch (Exception e) {
+            logger.severe("Errore durante la disconnessione: " + e.getMessage());
+            System.exit(1);
+        }
     }
 
     private void requestPeerListFromMaster() {
@@ -654,6 +731,63 @@ public class Peer {
 
         } catch (IOException e) {
             logger.severe("Errore nella richiesta della lista dei peer: " + e.getMessage());
+        }
+    }
+
+    public void start() {
+        try {
+            // Crea il server socket
+            serverSocket = new ServerSocket(Port);
+            logger.info("Server socket creato sulla porta " + Port);
+
+            // Registra il peer al master
+            registerWithMaster();
+
+            // Avvia il thread per gestire l'input dell'utente
+            inputThread = new Thread(this::handleUserInput);
+            inputThread.start();
+
+            // Avvia il thread per gestire gli upload
+            uploadThread = new Thread(this::gestisciUploadCoda);
+            uploadThread.start();
+
+            // Gestisci le connessioni in entrata
+            while (running) {
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    new Thread(() -> gestisciClient(clientSocket)).start();
+                } catch (IOException e) {
+                    if (running) {
+                        logger.severe("Errore nell'accettazione della connessione: " + e.getMessage());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.severe("Errore nell'avvio del peer: " + e.getMessage());
+        }
+    }
+
+    private void registerWithMaster() {
+        try {
+            Socket socket = new Socket(IPMaster, PortMaster);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // Invia comando di registrazione al master
+            String command = "REGISTER," + this.IP + "," + this.Port;
+            out.println(command);
+            
+            // Attendi conferma
+            String response = in.readLine();
+            if (response != null && response.equals("OK")) {
+                logger.info("Registrazione al master completata con successo");
+            } else {
+                logger.warning("Errore durante la registrazione al master");
+            }
+            
+            socket.close();
+        } catch (Exception e) {
+            logger.severe("Errore durante la registrazione al master: " + e.getMessage());
         }
     }
 }

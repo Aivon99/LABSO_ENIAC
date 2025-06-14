@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.logging.Logger;
+import java.util.HashSet;
+import java.util.Set;
 
 public class Master {
     private final HashMap<Tuple, List<String>> hashPeer; // IP+Port --> risorsa
@@ -124,9 +126,16 @@ public class Master {
         System.out.println("Peers:");
         for (Tuple peer : hashPeer.keySet()) {
             System.out.println(peer.getIP() + ":" + peer.getPort() + ":");
-            List<String> risorse = hashPeer.get(peer);
-            for (String r : risorse) {
-                System.out.println("  - " + r);
+            // Ottieni tutte le risorse associate a questo peer
+            Set<String> peerResources = new HashSet<>();
+            for (Map.Entry<String, List<Tuple>> entry : hashRisorse.entrySet()) {
+                if (entry.getValue().contains(peer)) {
+                    peerResources.add(entry.getKey());
+                }
+            }
+            // Stampa le risorse del peer
+            for (String resource : peerResources) {
+                System.out.println("  - " + resource);
             }
         }
     }
@@ -183,9 +192,27 @@ public class Master {
                 case "LISTPEERS":
                     handleListPeers(writer);
                     break;
+                case "RESOURCE_UPDATE":
+                    handleResourceUpdate(parti, writer);
+                    break;
+                case "PEER_UNAVAILABLE":
+                    handlePeerUnavailable(parti, writer);
+                    break;
+                case "UNREGISTER":
+                    handleUnregister(parti);
+                    writer.println("OK");
+                    break;
+                default:
+                    writer.println("ERROR");
             }
         } catch (IOException e) {
             logger.severe("Errore nella gestione del client: " + e.getMessage());
+        } finally {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                logger.severe("Errore nella chiusura del socket: " + e.getMessage());
+            }
         }
     }
 
@@ -273,14 +300,25 @@ public class Master {
     }
 
     private void handleDownload(String[] parti, PrintWriter writer) {
+        if (parti.length != 6) {
+            writer.println("ERRORE: Formato comando non valido");
+            return;
+        }
+
         String risorsa = parti[1];
         String fromIP = parti[2];
         int fromPort = Integer.parseInt(parti[3]);
         String toIP = parti[4];
         int toPort = Integer.parseInt(parti[5]);
 
+        // Crea una nuova entry nel log
         LogEntry entry = new LogEntry(risorsa, fromIP + ":" + fromPort, toIP + ":" + toPort, true);
-        downloadLogs.computeIfAbsent(risorsa, ignora -> new ArrayList<>()).add(entry);
+        
+        synchronized (downloadLogs) {
+            downloadLogs.computeIfAbsent(risorsa, k -> new ArrayList<>()).add(entry);
+            logger.info("Aggiunto log per il download di " + risorsa + " da " + fromIP + ":" + fromPort + " a " + toIP + ":" + toPort);
+        }
+        
         writer.println("SUCCESSO");
     }
 
@@ -330,6 +368,89 @@ public class Master {
                 writer.println(peer.getIP() + ":" + peer.getPort());
 
             }
+        }
+    }
+
+    private void handleResourceUpdate(String[] parts, PrintWriter writer) {
+        if (parts.length != 5) {
+            writer.println("ERRORE");
+            return;
+        }
+
+        String peerIP = parts[1];
+        int peerPort = Integer.parseInt(parts[2]);
+        boolean isAvailable = parts[3].equals("1");
+        String resourceName = parts[4];
+
+        synchronized (tableLock) {
+            Tuple peer = new Tuple(peerIP, peerPort);
+            if (isAvailable) {
+                if (!hashRisorse.containsKey(resourceName)) {
+                    hashRisorse.put(resourceName, new ArrayList<>());
+                }
+                // Verifica se il peer è già presente nella lista
+                List<Tuple> peerList = hashRisorse.get(resourceName);
+                if (!peerList.contains(peer)) {
+                    peerList.add(peer);
+                    logger.info("Aggiunta risorsa " + resourceName + " al peer " + peerIP + ":" + peerPort);
+                }
+            } else {
+                if (hashRisorse.containsKey(resourceName)) {
+                    List<Tuple> peerList = hashRisorse.get(resourceName);
+                    peerList.remove(peer);
+                    if (peerList.isEmpty()) {
+                        hashRisorse.remove(resourceName);
+                    }
+                    logger.info("Rimossa risorsa " + resourceName + " dal peer " + peerIP + ":" + peerPort);
+                }
+            }
+        }
+        writer.println("OK");
+    }
+
+    private void handlePeerUnavailable(String[] parts, PrintWriter writer) {
+        if (parts.length != 3) {
+            writer.println("ERRORE");
+            return;
+        }
+
+        String peerIP = parts[1];
+        int peerPort = Integer.parseInt(parts[2]);
+
+        synchronized (tableLock) {
+            Tuple peer = new Tuple(peerIP, peerPort);
+            if (hashRisorse.containsKey(peerIP)) {
+                List<Tuple> peerList = hashRisorse.get(peerIP);
+                peerList.remove(peer);
+                if (peerList.isEmpty()) {
+                    hashRisorse.remove(peerIP);
+                }
+            }
+            logger.info("Peer " + peerIP + ":" + peerPort + " marcato come non disponibile");
+        }
+        writer.println("OK");
+    }
+
+    private void handleUnregister(String[] parts) {
+        if (parts.length != 3) {
+            return;
+        }
+        
+        String peerIP = parts[1];
+        int peerPort = Integer.parseInt(parts[2]);
+        Tuple peer = new Tuple(peerIP, peerPort);
+        
+        synchronized (tableLock) {
+            // Rimuovi il peer dalla lista
+            rimuoviPeer(peer);
+            
+            // Rimuovi tutte le risorse associate al peer
+            hashRisorse.entrySet().removeIf(entry -> {
+                List<Tuple> peers = entry.getValue();
+                return peers.remove(peer) && peers.isEmpty();
+            });
+            
+            logger.info("Peer " + peerIP + ":" + peerPort + " disconnesso. Risorse rimosse.");
         }
     }
 
@@ -386,10 +507,17 @@ public class Master {
     }
 
     private void showLogs() {
+        if (downloadLogs.isEmpty()) {
+            System.out.println("Nessun download registrato.");
+            return;
+        }
+
         System.out.println("Risorse scaricate:");
-        for (List<LogEntry> entries : downloadLogs.values()) {
-            for (LogEntry entry : entries) {
-                System.out.println(entry);
+        synchronized (downloadLogs) {
+            for (List<LogEntry> entries : downloadLogs.values()) {
+                for (LogEntry entry : entries) {
+                    System.out.println(entry);
+                }
             }
         }
     }

@@ -6,17 +6,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
-import java.util.Objects;
 
 public class ResourceManager {
     private final String resourceDir;
     private final Map<String, String> resources; // nome -> path
+    private final Object resourceLock = new Object();
+    private final String port;
     private static final Logger logger = Logger.getLogger(ResourceManager.class.getName());
 
-    public ResourceManager(String resourceDir) {
+    public ResourceManager(String resourceDir, String port) {
         this.resourceDir = resourceDir;
         this.resources = new ConcurrentHashMap<>();
+        this.port = port;
         createResourceDir();
         createReceivedDir();
     }
@@ -36,43 +39,65 @@ public class ResourceManager {
     }
 
     public boolean addResource(String name, String content) {
-        try {
-            File file = new File(resourceDir, name);
-            Files.write(file.toPath(), content.getBytes());
-            resources.put(name, file.getAbsolutePath());
-            logger.info("Risorsa aggiunta: " + name + " con percorso: " + file.getAbsolutePath());
-            return true;
-        } catch (IOException e) {
-            logger.severe("Errore durante l'aggiunta della risorsa: " + e.getMessage());
-            return false;
+        synchronized (resourceLock) {
+            try {
+                File file = new File(resourceDir, name);
+                Files.write(file.toPath(), content.getBytes());
+                resources.put(name, file.getAbsolutePath());
+                return true;
+            } catch (IOException e) {
+                return false;
+            }
         }
     }
 
     public String getResource(String name) {
-        String path = resources.get(name);
-        if (path == null)
-            return null;
-        try {
-            return new String(Files.readAllBytes(Paths.get(path)));
-        } catch (IOException e) {
-            return null;
+        synchronized (resourceLock) {
+            String path = resources.get(name);
+            if (path == null) return null;
+            try {
+                return new String(Files.readAllBytes(Paths.get(path)));
+            } catch (IOException e) {
+                return null;
+            }
         }
     }
 
     public Set<String> listResources() {
-        return new HashSet<>(resources.keySet());
+        synchronized (resourceLock) {
+            return new HashSet<>(resources.keySet());
+        }
     }
 
     public void reload() {
-        File dir = new File(this.resourceDir);
-        if (dir.exists() && dir.isDirectory()) {
-            for (File file : Objects.requireNonNull(dir.listFiles())) {
-                this.resources.put(file.getName(), file.getAbsolutePath());
+        synchronized (resourceLock) {
+            // Pulisci la mappa esistente
+            resources.clear();
+            
+            // Leggi i file dalla cartella resources
+            File resourcesDir = new File("resources");
+            if (resourcesDir.exists() && resourcesDir.isDirectory()) {
+                for (File peerDir : resourcesDir.listFiles()) {
+                    if (peerDir.isDirectory()) {
+                        for (File file : peerDir.listFiles()) {
+                            if (file.isFile()) {
+                                try {
+                                    String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                                    resources.put(file.getName(), content);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     public String getResourcePath(String name) {
-        return resources.get(name);
+        synchronized (resourceLock) {
+            return resources.get(name);
+        }
     }
 }
