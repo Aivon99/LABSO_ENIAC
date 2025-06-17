@@ -1,0 +1,53 @@
+PeerListener.java
+Usa una sola porta (9000) per ascoltare connessioni in arrivo
+Usa un solo ServerSocket per evitare errori di binding
+Ha un thread di ascolto (run()), che chiama accept() in loop
+Poi, per ogni connessione accettata:
+- Crea un nuovo "Socket"
+- Lancia un thread separato (PeerHandler) per gestire i messaggi.
+
+Far partire in un altro prompt (dopo aver fatto javac Main.java PeerListener.java)
+java Main
+
+per verificare se funziona, ho fatto dei test:
+Ho eseguito
+Test-NetConnection -ComputerName localhost -Port 9000
+per verificare se la porta 9000 era aperta e in ascolto
+(se il risultato è TcpTestSucceeded : True allora è connesso)
+
+poi in un altro prompt:
+telnet localhost 9000
+- Se scrivi e ping
+- Il server ha ricevuto: ping
+- Il server ha risposto: pong
+- Telnet ha mostrato: pong
+(se poi vai a vedere la finestre dove hai eseguito Main, riceverai
+Nuova connessione da: /[0:0:0:0:0:0:0:1]:51249
+Ricevuto: ping)
+
+
+--comandi da fare:
+javac *.java
+
+Master:
+java Main master 9000
+Nuovo terminale->Peer:
+java Main peer 127.0.0.1 9000
+Nuovo terminale->Peer2:                 incrementa da solo la porta 5000 di default
+java Main peer 127.0.0.1 9000
+
+Nel primo peer, aggiungi alcune risorse:
+
+> add file1.txt Contenuto del file 1
+> add file2.txt Contenuto del file 2
+Nel secondo peer, prova a
+
+listdata remote    # Dovrebbe mostrare le risorse del primo peer
+> download file1.txt # Dovrebbe scaricare il file dal primo peer
+> listdata local     # Dovrebbe mostrare il file scaricato
+> quit               # funziona chiudere la connessione nei peer e non rende visibili le lore risorse locali
+Nel master, puoi usare:
+>listdata          # Mostra tutte le risorse disponibili
+> inspectNodes      # Mostra i dettagli di ogni peer
+> log              # Mostra il log dei download
+- quit: arresta il master

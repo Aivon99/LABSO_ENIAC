@@ -24,3 +24,7 @@ Comandi Console del Master
 
 - `listdata`
     - Stampa tutte le risorse condivise e i peer che le
+
+l'ho guardato ti direi di fare un po' di prove, magari utilizzando carichi un po' più impegnativi (i.e. magari usare più peer e con loop gli fai mandare un po di messaggi a piaggerella in contemporanea su uno, con un contatore per vedere se dei messaggi vengono persi/duplicati o robe simili). Alla fine mi viene da dire che o si mette nello stack il socket o si usa un id per le transazioni e si completano le cose in maniera disgiunta
+
+@Main.java @LogEntry.java @Master.java @Peer.java @PeerListener.java @ResourceManager.java @Triplet.java @Tuple.java 
